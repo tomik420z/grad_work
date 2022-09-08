@@ -8,25 +8,28 @@ public:
     using size_type = size_t;
     using value_type = int;
     using line_t = std::vector<value_type>;
+    using ptr_line_t = std::unique_ptr<line_t>;
     using matrix_t = std::vector<line_t>;
+    using ptr_matrix_t = std::unique_ptr<matrix_t>;
     using coord_t = std::pair<size_type, size_type>;
     using way_t = std::vector<coord_t>;
+    using ptr_way_t = std::unique_ptr<way_t>;
 protected:
     static constexpr value_type infinity_1 = std::numeric_limits<value_type>::max(); // inf1
     static constexpr value_type infinity_2 = infinity_1 - 1;  
     static constexpr value_type inf = infinity_1;
 
-    matrix_t& mx_dist;
-    value_type record;
-    
+    matrix_t& mx_dist; // матрица достижимости 
+    value_type record; // длина самого короткого пути 
+    way_t min_way;     // самый короткий путь  
 public:
     little_alg(matrix_t & mx) : mx_dist(mx), 
-                                record(inf) {        
+                                record(inf), min_way() {        
     }   
 
     // поиск минимального элемента в строке
     value_type get_min_element_line(matrix_t& mx, size_type index) {
-        value_type min = std::numeric_limits<value_type>::max();
+        value_type min = inf;
         size_type sz = mx.size();
         for(size_t i = 0; i < sz; ++i) {
             min = std::min(min, mx[index][i]);
@@ -57,7 +60,7 @@ public:
 
     // поиск минимального элемента в строке
     value_type get_min_element_row(matrix_t& mx, size_type index) {
-        value_type min = std::numeric_limits<value_type>::max();
+        value_type min = inf;
         size_type sz = mx.size();
         for(size_t i = 0; i < sz; ++i) {
             min = std::min(min, mx[i][index]);
@@ -182,9 +185,9 @@ public:
         return get_coord_without_inf(mx);
     }
 
-    void recoursive_procedure(matrix_t & M1, line_t & line, line_t & row, way_t &way) {
+    void recoursive_procedure(ptr_matrix_t M1, ptr_line_t line, ptr_line_t row, ptr_way_t way, value_type border_lim) {
         std::cout << "matrix: \n";
-        for(const auto& vec : M1) {
+        for(const auto& vec : *M1) {
             for(const auto & el : vec) {
                 if (el == infinity_1) {
                     std::cout << "inf1 ";
@@ -199,31 +202,36 @@ public:
         }
         std::cout << "-----------------------------\n";
         value_type border_cur = 0;
-        line_conversion(M1, border_cur); // (1)
-        row_conversion(M1, border_cur); // (2)
-        if (border_cur > record) {
+        line_conversion(*M1, border_cur); // (1)
+        row_conversion(*M1, border_cur); // (2)
+        border_lim += border_cur;
+        if (border_lim > record) {
+            std::cout <<"limit: " << border_lim << "  record: " << record << std::endl;
             return;
         }
         //std::cout << "2\n";
-        coord_t min_r = find_min_coord(M1); // (3-4)
-        way.push_back(coord_t{row[min_r.first], line[min_r.second]}); 
-        line.erase(line.begin() + min_r.second);
+        coord_t min_r = find_min_coord(*M1); // (3-4)
+        auto copy_way = *way;
+        auto copy_line = *line;
+        auto copy_row = *row;
+        way->push_back(coord_t{(*row)[min_r.first], (*line)[min_r.second]}); 
+        line->erase(line->begin() + min_r.second);
         /*std::cout << "way: ";
         for(auto num : line) {
             std::cout << num << "  ";
         }
         std::cout << '\n';
         */
-        row.erase(row.begin() + min_r.first);
+        row->erase(row->begin() + min_r.first);
         //std::cout << "3-4\n";
-        auto M2 = M1;
+        auto M2 = *M1;
         //std::cout << min_r.first <<"   "<< min_r.second;
-        auto [k, l] = set_inf_l_k(M1, min_r); // (5)
+        auto [k, l] = set_inf_l_k(*M1, min_r); // (5)
         //std::cout << "5\n";
-        M1[k][l] = infinity_1;
+        (*M1)[k][l] = infinity_1;
         M2[min_r.first][min_r.second] = infinity_2;
         std::cout << "matrix_after_substruction:\n";
-        for(const auto& vec : M1) {
+        for(const auto& vec : *M1) {
             for(const auto & el : vec) {
                 if (el == infinity_1) {
                     std::cout << "inf1 ";
@@ -239,31 +247,63 @@ public:
         std::cout << "----------------------------------------\n";
         
  
-        if (M1.size() > 2) {
-            recoursive_procedure(M1, line, row, way);
+        if (M1->size() > 2) {
+            recoursive_procedure(std::move(M1), std::move(line), std::move(row), std::move(way), border_lim);
         } else {
-            if (M1[0][0] < infinity_2) {
-                way.push_back(coord_t{row[0], line[0]});
-                way.push_back(coord_t{row[1], line[1]});
+            if ((*M1)[0][0] < infinity_2) {
+                way->push_back(coord_t{(*row)[0], (*line)[0]});
+                way->push_back(coord_t{(*row)[1], (*line)[1]});
             } else {
-                way.push_back(coord_t{row[0], line[1]});   
-                way.push_back(coord_t{row[1], line[0]}); 
+                way->push_back(coord_t{(*row)[0], (*line)[1]});   
+                way->push_back(coord_t{(*row)[1], (*line)[0]}); 
             }
             value_type sum = 0;
-            for(auto[i, j] : way) {
+            for(auto[i, j] : *way) {
                 sum += mx_dist[i][j];
             }
             if (sum < record) {
                 record = sum;
             }
             std::cout << "way:"; 
-            for(auto [v1, v2] : way) {
+            for(auto [v1, v2] : *way) {
                 std::cout << "(" << v1 << "," << v2 << ")";
             }
             std::cout << "   len_way = " << sum << std::endl;
             std::cout << '\n';
         }
+
         
+        if (M2.size() > 2) {
+            recoursive_procedure(std::move(std::make_unique<matrix_t>(M2)), 
+                std::move(std::make_unique<line_t>(copy_line)),
+                std::move(std::make_unique<line_t>(copy_row)), 
+                std::move(std::make_unique<way_t>(copy_way)),
+                border_lim);
+        } else {
+            if (M2[0][0] < infinity_2) {
+                copy_way.push_back(coord_t{(*row)[0], (*line)[0]});
+                copy_way.push_back(coord_t{(*row)[1], (*line)[1]});
+            } else {
+                copy_way.push_back(coord_t{(*row)[0], (*line)[1]});   
+                copy_way.push_back(coord_t{(*row)[1], (*line)[0]}); 
+            }
+            value_type sum = 0;
+            for(auto[i, j] : copy_way) {
+                sum += mx_dist[i][j];
+            }
+            if (sum < record) {
+                record = sum;
+            }
+
+            std::cout << "copy_way:"; 
+            for(auto [v1, v2] : copy_way) {
+                std::cout << "(" << v1 << "," << v2 << ")";
+            }
+            std::cout << "   len_way = " << sum << std::endl;
+            std::cout << '\n';
+
+        }   
+
         std::cout << "end\n";
         //recoursive_procedure(M2, line, row);
 
@@ -279,7 +319,10 @@ public:
         auto mx_temp = mx_dist;
         way_t w;
         w.reserve(mx_temp.size());
-        recoursive_procedure(mx_temp, vertex_line, vertex_row, w);
+        recoursive_procedure(std::move(std::make_unique<matrix_t>(mx_temp)),
+                std::move(std::make_unique<line_t>(vertex_line)), 
+                std::move(std::make_unique<line_t>(vertex_row)), 
+                std::move(std::make_unique<way_t>(w)), 0);
     }
 
     ~little_alg() {} 
