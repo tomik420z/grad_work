@@ -59,21 +59,26 @@ protected:
     void __read_matrix(std::ifstream &);
     void __fill_first_line(std::ifstream &);
     static int __parsing_number(std::ifstream &);
+    void __clear_line(Node* begin_row);
+    void __copy_first_line(list_matrix & obj);
 
-    template<bool Cond, bool Direction>
+    template<bool Is_const, bool Direction>
     class __common_iterator {
     protected:
-        using value_type = std::conditional_t<Cond, const Node*, Node*>;
-        using ref = std::conditional_t<Cond, const T&, T&>;
-        value_type ptr;   
+        using ptr_type = std::conditional_t<Is_const, const Node*, Node*>;
+        using value_type = std::conditional_t<Is_const, const T&, T&>;
+        ptr_type ptr;   
     public:
         __common_iterator() : ptr(nullptr) {}
 
-        __common_iterator(value_type p_ptr) : ptr(p_ptr) {}
+        __common_iterator(ptr_type p_ptr) : ptr(p_ptr) {}
         
-        __common_iterator(__common_iterator<Cond, Direction>& it) : ptr(it.ptr) {}  
+        __common_iterator(__common_iterator<Is_const, Direction>& it) : ptr(it.ptr) {}  
 
-        ref operator*() { return ptr->value; }
+        value_type operator*() noexcept { return ptr->value; }
+
+        ptr_type operator->() noexcept { return ptr; }
+        
 
         __common_iterator& operator++() {
             if constexpr (Direction) {
@@ -82,7 +87,17 @@ protected:
                 ptr = ptr->down;
             }
             return *this; 
-        } 
+        }
+
+        __common_iterator& operator++(int) {
+            __common_iterator tmp = *this;
+            if constexpr (Direction) {
+                ptr = ptr->right;
+            } else {
+                ptr = ptr->down;
+            }
+            return *this;
+        }  
 
         __common_iterator& operator--() {
             if constexpr (Direction) {
@@ -112,30 +127,141 @@ public:
     using row_iterator = __common_iterator<false, false>; 
     using const_col_iterator = __common_iterator<true, true>;
     using col_iterator = __common_iterator<false, true>;
+     
     
     list_matrix(const char *file_name) {
         __read_file(file_name);
     }
 
-    ~list_matrix() {
-
+    list_matrix(list_matrix & obj) : size_matrix(obj.size_matrix) {
+        if (size_matrix <= 0) {
+            return;
+        }
+        __copy_first_line(obj);
+        auto row_obj = obj.head->down; 
+        Node*head_row = head;  // указатели на начало списка (строки) 
+        for(size_t i = 1; i < size_matrix; ++i) {
+            Node * prev_ptr = nullptr;  // предыдущий указатель          
+            Node* curr_ptr = head_row->down;  //текущий указатель 
+            auto iter_col = names_col.begin(); 
+            auto iter_row = ++names_row.begin(); // идём с первой строки 
+            auto col_obj = row_obj;
+            // предыдущая строка  
+            for(Node*tail_col = head_row; tail_col != nullptr; tail_col = tail_col->right) {
+                curr_ptr = alloc_tr::allocate(alloc, 1);
+                alloc_tr::construct(alloc, curr_ptr, Node{
+                    col_obj->value,   
+                    tail_col,
+                    nullptr,
+                    nullptr,
+                    prev_ptr, 
+                    iter_row,
+                    iter_col
+                });
+                if (prev_ptr != nullptr) {
+                    prev_ptr->right = curr_ptr;
+                }
+                tail_col->down = curr_ptr;
+                prev_ptr = curr_ptr;
+                curr_ptr = curr_ptr->right;
+                ++iter_col;
+                col_obj = col_obj->right;
+            }
+            row_obj = row_obj->down;
+            ++iter_row;
+            head_row = head_row->down;
+        }
     }
 
-    template<bool Cond, bool Direction>
-    friend class __common_iterator;
+    void clear() {
+        if (head == nullptr) {
+            return;
+        }
+        auto prev = head;
+        auto tail = head->down;
+        while(tail != nullptr) {
+            __clear_line(prev);
+            prev = tail;
+            tail = tail->down;
+        }
+        __clear_line(prev);
+        head = nullptr;
+    }
 
-    
+    ~list_matrix() {
+        clear();
+    }
+
     row_iterator row_begin(col_iterator & it_col) { return row_iterator(it_col.ptr); }
     row_iterator row_begin() noexcept { return row_iterator(head); }
     col_iterator col_begin() noexcept { return col_iterator(head); }
     col_iterator col_begin(row_iterator & it_row) noexcept { return col_iterator(it_row.ptr); }
     row_iterator row_end() noexcept { return row_iterator(nullptr); }
     col_iterator col_end() noexcept {return col_iterator(nullptr); }
-
     
+    template<bool Is_const, bool Direction>
+    friend class __common_iterator;
+
     friend std::ifstream &operator>><T, _Alloc>(std::ifstream &, list_matrix &);
 
 };
+
+template<typename T, typename _Alloc>
+void list_matrix<T, _Alloc>::__copy_first_line(list_matrix<T, _Alloc> & obj) {
+    if (size_matrix <= 0) {
+        throw "err1";
+    }
+    Node *tail = nullptr;
+    Node *prev = nullptr;
+    auto iter_col = names_col.begin();
+    auto iter_row = names_row.begin();
+    auto tail_obj = obj.head;  
+    head = alloc_tr::allocate(alloc, 1);
+    alloc_tr::construct(alloc, head, Node{
+        tail_obj->value,
+        nullptr, 
+        nullptr,
+        nullptr,
+        nullptr,
+        iter_row,
+        iter_col
+    });
+    tail = head;
+    prev = tail;
+    tail = tail->right;
+    tail_obj = tail_obj->right;
+    for(size_t i = 1; i < size_matrix; ++i, ++iter_row) {
+        tail = alloc_tr::allocate(alloc, 1);
+        alloc_tr::construct(alloc, tail, Node{
+            tail_obj->value, 
+            nullptr,
+            nullptr,
+            nullptr,
+            prev,
+            iter_row, 
+            iter_col
+        });
+        prev->right = tail;
+        prev = tail;
+        tail = tail->right;
+    }
+}
+
+template<typename T, typename _Alloc>
+void list_matrix<T, _Alloc>::__clear_line(Node* row_begin) {
+    Node* prev = row_begin;
+    row_begin = row_begin->right;
+    while(row_begin != nullptr) {
+        std::cout << prev->value << " ";
+        alloc_tr::destroy(alloc, &prev->value); 
+        alloc_tr::deallocate(alloc, prev, 1);
+        prev = row_begin;
+        row_begin = row_begin->right;
+    }
+    std::cout << prev->value << std::endl;
+    alloc_tr::destroy(alloc, &prev->value); 
+    alloc_tr::deallocate(alloc, prev, 1);
+}
 
 template<typename T, typename _Alloc>
 int list_matrix<T, _Alloc>::__parsing_number(std::ifstream &ifs) {
@@ -198,6 +324,7 @@ void list_matrix<T, _Alloc>::__read_matrix(std::ifstream &ifs) {
             prev_ptr = curr_ptr;
             curr_ptr = curr_ptr->right;
             ++iter_col;
+
         }
 
         ++iter_row;
@@ -237,7 +364,6 @@ void list_matrix<T, _Alloc>::__fill_first_line(std::ifstream &ifs) {
     for(size_t i = 1; i < size_matrix; ++i, ++iter_row) {
         int temp_var = __parsing_number(ifs);
         
-        std::cout <<"var = " << temp_var << std::endl;
         tail = alloc_tr::allocate(alloc, 1);
         alloc_tr::construct(alloc, tail, Node{
             temp_var, 
@@ -293,6 +419,7 @@ typename list_matrix<T, _Alloc>::size_type  list_matrix<T, _Alloc>::__parsing_si
 
     return reg_num;
 }
+
 template<typename T, typename _Alloc>
 std::ostream& operator<<(std::ostream &os, list_matrix<T, _Alloc> & mx) {
     for(auto it_row = mx.row_begin(); it_row != mx.row_end(); ++it_row) {
