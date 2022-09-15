@@ -26,8 +26,8 @@ protected:
         Node* right;
         Node* down;
         Node* left;
-        std::list<int>::iterator __it_row;
-        std::list<int>::iterator __it_col;
+        typename std::list<std::pair<int, Node*>>::iterator __it_row;
+        typename std::list<std::pair<int, Node*>>::iterator __it_col;
     };
 
 public:
@@ -38,8 +38,8 @@ public:
     using alloc_tr = std::allocator_traits<alloc_t>;
     static constexpr int inf = std::numeric_limits<int>::max();
 protected:
-    std::list<int> names_row;
-    std::list<int> names_col;
+    std::list<std::pair<int, Node*>> names_row;
+    std::list<std::pair<int, Node*>> names_col;
     alloc_t alloc;
     Node* head;
     size_type size_matrix;
@@ -61,6 +61,10 @@ protected:
     static int __parsing_number(std::ifstream &);
     void __clear_line(Node* begin_row);
     void __copy_first_line(list_matrix & obj);
+    void __bind_list_and_mx();
+    void __erase_line(Node *tail);
+    void __erase_col(Node *tail);
+
 
     template<bool Is_const, bool Direction>
     class __common_iterator {
@@ -73,7 +77,7 @@ protected:
 
         __common_iterator(ptr_type p_ptr) : ptr(p_ptr) {}
         
-        __common_iterator(__common_iterator<Is_const, Direction>& it) : ptr(it.ptr) {}  
+        __common_iterator(const __common_iterator& it) : ptr(it.ptr) {}  
 
         value_type operator*() noexcept { return ptr->value; }
 
@@ -89,15 +93,6 @@ protected:
             return *this; 
         }
 
-        __common_iterator& operator++(int) {
-            __common_iterator tmp = *this;
-            if constexpr (Direction) {
-                ptr = ptr->right;
-            } else {
-                ptr = ptr->down;
-            }
-            return *this;
-        }  
 
         __common_iterator& operator--() {
             if constexpr (Direction) {
@@ -108,12 +103,17 @@ protected:
             return *this; 
         } 
 
+        __common_iterator& operator=(__common_iterator rhs) {
+            ptr = rhs.ptr;
+            return *this;
+        }
+
         
-        bool operator==(const __common_iterator& rhs) {
+        bool operator==(__common_iterator rhs) {
             return ptr == rhs.ptr;
         }
 
-        bool operator!=(const __common_iterator&rhs) {
+        bool operator!=(__common_iterator rhs) {
             return !operator==(rhs);
         }
 
@@ -127,8 +127,23 @@ public:
     using row_iterator = __common_iterator<false, false>; 
     using const_col_iterator = __common_iterator<true, true>;
     using col_iterator = __common_iterator<false, true>;
-     
-    
+
+    void print() {
+        for(Node* tail = head; tail != nullptr; tail = tail->down) {
+            for(Node* it = tail; it != nullptr; it = it->right) {
+                std::cout << "(" << it->__it_row->second->value << "," << it->__it_col->second->value << ")";
+            }
+            std::cout << std::endl;
+        }
+        for(Node* tail = head; tail != nullptr; tail = tail->down) {
+            for(Node* it = tail; it != nullptr; it = it->right) {
+                std::cout << "(" << it->__it_row->first << "," << it->__it_col->first << ")";
+            }
+            std::cout << std::endl;
+        }
+        
+    }
+
     list_matrix(const char *file_name) {
         __read_file(file_name);
     }
@@ -137,14 +152,24 @@ public:
         if (size_matrix <= 0) {
             return;
         }
-        __copy_first_line(obj);
+        // скопировать порядок вершин 
+        const auto &ref_names_col = obj.names_col;
+        for(auto [v, ptr] : ref_names_col) {
+            names_col.push_back(std::pair{v, nullptr});
+        }
+        const auto &ref_names_row = obj.names_row;
+        for(auto [v, ptr] : ref_names_row) {
+            names_row.push_back(std::pair{v, nullptr});
+        }
+        
+        __copy_first_line(obj); // заполнить первую строку 
         auto row_obj = obj.head->down; 
         Node*head_row = head;  // указатели на начало списка (строки) 
+        auto iter_row = ++names_row.begin(); // идём с первой строки 
         for(size_t i = 1; i < size_matrix; ++i) {
             Node * prev_ptr = nullptr;  // предыдущий указатель          
             Node* curr_ptr = head_row->down;  //текущий указатель 
             auto iter_col = names_col.begin(); 
-            auto iter_row = ++names_row.begin(); // идём с первой строки 
             auto col_obj = row_obj;
             // предыдущая строка  
             for(Node*tail_col = head_row; tail_col != nullptr; tail_col = tail_col->right) {
@@ -171,12 +196,19 @@ public:
             ++iter_row;
             head_row = head_row->down;
         }
+        __bind_list_and_mx();  // звязать списки и матрицу
     }
+
+    void erase(col_iterator it);
+
+    size_type size() const noexcept { return size_matrix; }
 
     void clear() {
         if (head == nullptr) {
             return;
         }
+        names_col.clear();
+        names_row.clear();
         auto prev = head;
         auto tail = head->down;
         while(tail != nullptr) {
@@ -192,19 +224,121 @@ public:
         clear();
     }
 
-    row_iterator row_begin(col_iterator & it_col) { return row_iterator(it_col.ptr); }
+    row_iterator get_row_iter(col_iterator it_col) noexcept { return row_iterator(it_col.ptr); }
+    col_iterator get_col_iter(row_iterator it_row) noexcept { return col_iterator(it_row.ptr); }
+
     row_iterator row_begin() noexcept { return row_iterator(head); }
     col_iterator col_begin() noexcept { return col_iterator(head); }
-    col_iterator col_begin(row_iterator & it_row) noexcept { return col_iterator(it_row.ptr); }
+
+    row_iterator row_begin(col_iterator it_col) noexcept { 
+        return row_iterator(it_col.ptr->__it_col->second); 
+    }
+    col_iterator col_begin(col_iterator it_col) noexcept {
+        return col_iterator(it_col.ptr->__it_row->second);
+    }
+    row_iterator row_begin(row_iterator & it_row) noexcept { 
+        return row_iterator(it_row.ptr->__it_col->second); 
+    }
+    col_iterator col_begin(row_iterator & it_row) noexcept { 
+        return col_iterator(it_row.ptr->__it_row->second); 
+    }
+
     row_iterator row_end() noexcept { return row_iterator(nullptr); }
     col_iterator col_end() noexcept {return col_iterator(nullptr); }
+
+    const std::list<std::pair<int, Node*>>& get_list_col()  { return names_col; }
+    const std::list<std::pair<int, Node*>>& get_list_row() { return names_row; }
     
     template<bool Is_const, bool Direction>
     friend class __common_iterator;
 
+    void print(col_iterator it) {
+        std::cout << "("<< it.ptr->__it_row->first << "," << it.ptr->__it_col->first << "," << *it << ")\n"; 
+    }
+
+    std::pair<int, int> get_rib(col_iterator it) {
+        return { it.ptr->__it_row->first, it.ptr->__it_col->first };
+    }  
+
     friend std::ifstream &operator>><T, _Alloc>(std::ifstream &, list_matrix &);
 
 };
+
+template<typename T, typename _Alloc>
+void list_matrix<T, _Alloc>::__erase_line(Node* ptr_row_head) {
+    auto col_head = ptr_row_head;
+    if (col_head == head) {
+        head = head->down;
+        auto tail = head;
+        for(auto &[names, ptr]: names_col) {
+            ptr = tail;
+            tail = tail->right;
+        }
+    }
+    for(; col_head != nullptr; col_head = col_head->right) {
+        Node*up_iter = col_head->up;
+        Node*down_iter = col_head->down;
+        if (up_iter != nullptr) {
+            up_iter->down = down_iter;
+        } 
+        if (down_iter != nullptr) {
+            down_iter->up = up_iter;
+        }
+    }
+    //TODO
+    /*
+    for(; __head != nullptr; __head = __head->right) {
+        alloc_tr::destroy(alloc, &head->value);
+        alloc_tr::deallocate(alloc, )
+    }*/
+}
+
+template<typename T, typename _Alloc>
+void list_matrix<T, _Alloc>::__erase_col(Node* ptr_col_head) {
+    auto row_head = ptr_col_head;
+    if (row_head == head) {
+        head = head->right;
+        auto tail = head;
+        for(auto &[name, ptr] : names_row) {
+            ptr = tail;
+            tail = tail->down;
+        }
+    }
+    for(; row_head != nullptr; row_head = row_head->down) {
+        Node*left_iter = row_head->left;
+        Node*right_iter = row_head->right;
+        if (left_iter != nullptr) {
+            left_iter->right = right_iter;
+        } 
+        if (right_iter != nullptr) {
+            right_iter->left = left_iter;
+        }
+    }
+}
+
+template<typename T, typename _Alloc>
+void list_matrix<T, _Alloc>::erase(col_iterator it) {
+    // удаление строки 
+    __erase_line(it.ptr->__it_row->second);
+    names_row.erase(it.ptr->__it_row);
+    __erase_col(it.ptr->__it_col->second);
+    names_col.erase(it.ptr->__it_col);
+    --size_matrix;
+}
+
+template <typename T, typename _Alloc>
+void list_matrix<T, _Alloc>::__bind_list_and_mx() {
+    Node*tail = head;
+    std::for_each(std::begin(names_col), std::end(names_col), [&tail](auto & p){
+        p.second = tail;
+        tail = tail->right;
+    });
+    tail = head;
+    std::for_each(std::begin(names_row), std::end(names_row), [&tail](auto& p){
+        p.second = tail;
+        tail = tail->down;
+    });
+}
 
 template<typename T, typename _Alloc>
 void list_matrix<T, _Alloc>::__copy_first_line(list_matrix<T, _Alloc> & obj) {
@@ -230,7 +364,8 @@ void list_matrix<T, _Alloc>::__copy_first_line(list_matrix<T, _Alloc> & obj) {
     prev = tail;
     tail = tail->right;
     tail_obj = tail_obj->right;
-    for(size_t i = 1; i < size_matrix; ++i, ++iter_row) {
+    ++iter_col;
+    for(size_t i = 1; i < size_matrix; ++i) {
         tail = alloc_tr::allocate(alloc, 1);
         alloc_tr::construct(alloc, tail, Node{
             tail_obj->value, 
@@ -244,6 +379,8 @@ void list_matrix<T, _Alloc>::__copy_first_line(list_matrix<T, _Alloc> & obj) {
         prev->right = tail;
         prev = tail;
         tail = tail->right;
+        tail_obj = tail_obj->right;
+        ++iter_col;
     }
 }
 
@@ -252,13 +389,11 @@ void list_matrix<T, _Alloc>::__clear_line(Node* row_begin) {
     Node* prev = row_begin;
     row_begin = row_begin->right;
     while(row_begin != nullptr) {
-        std::cout << prev->value << " ";
         alloc_tr::destroy(alloc, &prev->value); 
         alloc_tr::deallocate(alloc, prev, 1);
         prev = row_begin;
         row_begin = row_begin->right;
     }
-    std::cout << prev->value << std::endl;
     alloc_tr::destroy(alloc, &prev->value); 
     alloc_tr::deallocate(alloc, prev, 1);
 }
@@ -294,16 +429,15 @@ void list_matrix<T, _Alloc>::__read_matrix(std::ifstream &ifs) {
         return;
     }
     __ignore_spaces_until_char(ifs, '{'); 
-    ifs.get(); // read '{'  
+    ifs.get(); // read '{' 
 
-    __fill_first_line(ifs); // заполнить первую строку 
-
+    __fill_first_line(ifs); // заполнить первую строку
+    auto iter_row = ++names_row.begin(); // идём с первой строки 
     Node*head_row = head;  // указатели на начало списка (строки) 
     for(size_t i = 1; i < size_matrix; ++i) {
         Node * prev_ptr = nullptr;  // предыдущий указатель          
         Node* curr_ptr = head_row->down;  //текущий указатель 
         auto iter_col = names_col.begin(); 
-        auto iter_row = ++names_row.begin(); // идём с первой строки 
         // предыдущая строка  
         for(Node*tail_col = head_row; tail_col != nullptr; tail_col = tail_col->right) {
             int temp_var = __parsing_number(ifs); 
@@ -324,9 +458,7 @@ void list_matrix<T, _Alloc>::__read_matrix(std::ifstream &ifs) {
             prev_ptr = curr_ptr;
             curr_ptr = curr_ptr->right;
             ++iter_col;
-
         }
-
         ++iter_row;
         head_row = head_row->down;
     }
@@ -335,6 +467,7 @@ void list_matrix<T, _Alloc>::__read_matrix(std::ifstream &ifs) {
     ifs.get();
     __ignore_spaces_until_char(ifs, ';');
     ifs.get();   
+    __bind_list_and_mx();   // связать матрицу и списки 
 }
 
 template<typename T, typename _Alloc>
@@ -360,8 +493,9 @@ void list_matrix<T, _Alloc>::__fill_first_line(std::ifstream &ifs) {
     tail = head;
     prev = tail;
     tail = tail->right;
+    ++iter_col;
 
-    for(size_t i = 1; i < size_matrix; ++i, ++iter_row) {
+    for(size_t i = 1; i < size_matrix; ++i, ++iter_col) {
         int temp_var = __parsing_number(ifs);
         
         tail = alloc_tr::allocate(alloc, 1);
@@ -383,8 +517,8 @@ void list_matrix<T, _Alloc>::__fill_first_line(std::ifstream &ifs) {
 template<typename T, typename _Alloc>
 void list_matrix<T, _Alloc>::__fill_list_names() {
     for(size_t i = 0; i < size_matrix; ++i) {
-        names_row.push_back(static_cast<int>(i));
-        names_col.push_back(static_cast<int>(i));
+        names_row.push_back(std::pair{static_cast<int>(i), nullptr});
+        names_col.push_back(std::pair{static_cast<int>(i), nullptr});
     }    
 }
 
@@ -422,88 +556,31 @@ typename list_matrix<T, _Alloc>::size_type  list_matrix<T, _Alloc>::__parsing_si
 
 template<typename T, typename _Alloc>
 std::ostream& operator<<(std::ostream &os, list_matrix<T, _Alloc> & mx) {
+    const auto& ref_col_li = mx.get_list_col();
+    for(const auto & [names, ptr] :  ref_col_li) {
+        std::cout.width(7);
+        std::cout << names << " ";
+    } 
+    std::cout << std::endl;
+    const auto&ref_row_li = mx.get_list_row();
+    auto it_li = ref_row_li.cbegin();
     for(auto it_row = mx.row_begin(); it_row != mx.row_end(); ++it_row) {
-        for(auto it_col = mx.col_begin(it_row); it_col != mx.col_end(); ++it_col) {
+        std::cout.width(2);
+        std::cout << it_li->first;  
+        for(auto it_col = mx.get_col_iter(it_row); it_col != mx.col_end(); ++it_col) {
+            std::cout.width(7);
             if (*it_col == list_matrix<T, _Alloc>::inf) {
-                std::cout << "inf ";
+                std::cout << "inf1";
+            } else if (*it_col == list_matrix<T, _Alloc>::inf - 1) {
+                std::cout << "inf2";
             } else {
-                std::cout << *it_col << " ";
+                std::cout << *it_col;
             }
         }
+        ++it_li;
         std::cout << std::endl;
     }
     return os;
 }
-
-/*
-std::ifstream & operator>>(std::ifstream & ifs, matrix_dist & mx)  {
-    mx.__parsing_size_mx(ifs, mx);
-    auto & dist_ptr = mx.dist_matrix;
-    auto & size_mx = mx.size_matrix;
-    dist_ptr.resize(size_mx);
-    std::for_each(std::begin(dist_ptr), std::end(dist_ptr), [&size_mx](auto & vec){
-        vec.resize(size_mx);
-    });
-    matrix_dist::__ignore_spaces_until_char(ifs, '{');
-    ifs.get(); // '{'
-
-    // input matrix distance
-    matrix_dist::size_type sz = dist_ptr.size();
-    for(size_t i = 0; i < sz; ++i) {
-        for(size_t j = 0; j < sz; ++j) {
-            if (i == j) {
-                matrix_dist::__ignore_spaces_until_char(ifs, 'i');
-                std::string name_inf(3, '\0');
-                name_inf[0] = ifs.get(); // 'i'
-                name_inf[1] = ifs.get(); // 'n'
-                name_inf[2] = ifs.get(); // 'f'
-                if (name_inf != "inf") {
-                    throw "bad_input";
-                }
-                dist_ptr[i][j] = std::numeric_limits<matrix_dist::value_type>::max();
-            } else {
-                ifs>> dist_ptr[i][j];
-            }
-        }
-    }
-    /*
-    std::for_each(std::begin(dist_ptr), std::end(dist_ptr), [&ifs](auto & vec) {
-        std::for_each(std::begin(vec), std::end(vec), [&ifs](auto & value){
-            ifs >> value;
-        }); 
-    });
-    */
-  /*  
-    matrix_dist::__ignore_spaces_until_char(ifs, '}');
-    ifs.get();
-
-    return ifs;
-}
-*/
-/*
-std::ostream & operator<<(std::ostream & os, const matrix_dist::line_t &l) {
-    std::for_each(std::begin(l), std::end(l), [&os](auto num){
-        if (num != std::numeric_limits<matrix_dist::value_type>::max()) {
-            os << num << " ";
-        } else {
-            os << "inf "; 
-        }
-    });
-    return os;
-}
-*/
-
-/*
-std::ostream & operator<<(std::ostream & os, const matrix_dist & mx) {
-    const auto & mx_ref = mx.dist_matrix;
-    std::for_each(std::begin(mx_ref), std::end(mx_ref) - 1, [&os](const auto & vec){
-        os << vec << std::endl;
-    });
-
-    os << mx_ref.back();
-
-    return os;
-}
-*/
 
 #endif 
