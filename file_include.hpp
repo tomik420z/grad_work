@@ -14,5 +14,11 @@
 #include <list>
 #include <random>
 #include <cmath>
+#include <thread>
+#include <stack>
+#include <queue>
+#include <omp.h>
 
+#include <pthread.h>
+#include <semaphore.h>
 #endif

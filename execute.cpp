@@ -1,3 +1,5 @@
+#pragma GCC optimize("O3")
+
 #include "little_alg.hpp"
 #include "list_matrix.hpp"
 #include "linear_allocator.hpp"
@@ -8,26 +10,37 @@ list_matrix<int, linear_allocator<int>> create_matrix_list(const std::string & f
     matrix_dist dist_mx(f_name);
     size_t n = dist_mx.get_matrix_dist().size();    
     using alloc_ty = list_matrix<int, linear_allocator<int>>::alloc_node;
-    alloc_ty alloc(n * n);
+    alloc_ty alloc((n + 1));
     list_matrix<int, linear_allocator<int>> mx_li(dist_mx.get_matrix_dist(), std::move(alloc));
     return mx_li;
 }
-/*
-list_matrix<int> create_matrix_list(const std::string & f_name) {
-    matrix_dist dist_mx(f_name);
-    list_matrix<int> obj(dist_mx.get_matrix_dist());
-    return obj;
-}
-*/
+
 int main(int argc, char*argv[]) {
     if (argc > 2) {
         std::cout << "incorrect format\n";
         return -1;
     }
     try {
+        
+    /*
+        auto li1 = create_matrix_list(argv[1]);
+       for(size_t i = 0; i < 3; ++i) {
+            auto it = li1.col_begin();
+            li1.erase(it);
+        }
+        list_matrix<int, linear_allocator<int>> li4 = li1;
+        li1.print_list_col();
+        li1.print_list_row(); 
+        li4.print_list_col();
+        li4.print_list_row();
+        std::cout << li1 << std::endl;
+        std::cout << li4 << std::endl;
+    */
+   
         auto li = create_matrix_list(argv[1]);
-        //std::cout << li << std::endl;
         execution_time tm;
+        
+       // std::cout << "matrix_dist\n" << li << std::endl;
         tm.start();
         little_alg alg(li);
         alg();
@@ -38,11 +51,11 @@ int main(int argc, char*argv[]) {
             std::cout << "(" << v1 << "," << v2 << ")";
         } 
         std::cout<< "   cost = " << alg.get_min_len_way() << std::endl;
-        
+            
     } catch(const char * e) {
         std::cerr << e << std::endl;
     }
-
+    
     return 0;
 }
 
