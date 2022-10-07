@@ -348,27 +348,16 @@ public:
 
 #pragma omp parallel 
 {
-    #pragma omp single nowait
+#pragma omp single nowait
     {
     
-//std::cout << omp_get_thread_num() << std::endl;
 
         value_type border_cur = 0; 
         initial_conversion(M1, border_lim);
 
-        // печать преобразованной матрицы 
-       // std::cout << "matrix_after_substracting:\n";
-       // std::cout << *M1 << std::endl;
-       // std::cout << "-------------------------------\n"; 
 
-        // если превышена граница, то выход
         if (border_lim < record) {
-                //std::cout <<"limit: " << border_lim << "  record: " << record << std::endl;
-
-            // поиск минимального элемента, имеющего наименьщий коэффициент 
             auto it = find_min_coord(M1);
-            //std::cout << "edge: ";
-            //M1->print(it);
             auto copy_way = way;
             way.add_edge(mx_dist, M1.get_edge(it));
             value_type temp = *it;
@@ -379,27 +368,21 @@ public:
             (*it_kl) = infinity_1;
             if (M1.size() > 2) {
 
-#pragma omp task firstprivate(M1, way, border_lim)
+#pragma omp task shared(M1, way, border_lim)
                 {
-                    //auto M = M1;
-                    //auto w = way;
-                    //auto border_l = border_lim;  
                     recoursive_procedure(std::move(M1), std::move(way), border_lim);
                 }
             } else {
                 bool fl = true; 
                 add_the_last_two_edges(way, M1, fl);
-                //if (!fl){
-                  //  return;
-                //}
                 long long sum = way.get_cost();
-                //std::cout << sum << std::endl;
-                omp_set_lock(&mtx);
-                if (sum < record) {
-                    min_way = way;
-                    record = sum;
+#pragma omp critical
+                {
+                    if (sum < record) {
+                        min_way = way;
+                        record = sum;
+                    }
                 }
-                omp_unset_lock(&mtx);
                 //std::cout << "record = "<< record << std::endl;
                 //buff << *M1 << std::endl;
                 //std::cout << "----------------------------------\n";
