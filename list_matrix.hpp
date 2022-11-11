@@ -46,6 +46,7 @@ protected:
     Node * __names_col;
     Node* __names_row;
     Node* head;
+    Node* __null_ptr;
     size_type size_matrix;
     const size_t __sz;
     
@@ -82,7 +83,7 @@ protected:
         using value_type = std::conditional_t<Is_const, const T&, T&>;
         ptr_type ptr;   
     public:
-        __common_iterator() : ptr(nullptr) {}
+        __common_iterator() : ptr(__null_ptr) {}
 
         __common_iterator(ptr_type p_ptr) : ptr(p_ptr) {}
         
@@ -137,7 +138,7 @@ protected:
 public:
     void print_list_row() {
         Node*tail = __names_row;
-        while(tail) {
+        while(tail != __null_ptr) {
             std::cout <<"(" << tail << " ";
             std::cout << tail->value << ")";
             tail = tail->right;
@@ -147,7 +148,7 @@ public:
 
     void print_list_col() {
         Node*tail = __names_col;
-        while(tail) {
+        while(tail != __null_ptr) {
             std::cout << "(" << tail << " ";
             std::cout << tail->value << ")";
             tail = tail->right;
@@ -177,21 +178,19 @@ public:
     }*/
 
     void __copy_first_line(const std::vector<int>& obj) {
-        Node *tail = nullptr;
-        Node *prev = nullptr;
+        Node *tail = __null_ptr;
+        Node *prev = __null_ptr;
         Node* iter_col = __names_col;
         Node* iter_row = __names_row;
-        //auto iter_col = names_col.begin();
-        //auto iter_row = names_row.begin();
         
         auto tail_obj = obj.begin();  
         head = alloc_tr::allocate(alloc, 1);
         alloc_tr::construct(alloc, head, Node{
             *tail_obj,
-            nullptr, 
-            nullptr,
-            nullptr,
-            nullptr,
+            __null_ptr, 
+            __null_ptr,
+            __null_ptr,
+            __null_ptr,
             iter_row,
             iter_col
         });
@@ -206,9 +205,9 @@ public:
             tail = alloc_tr::allocate(alloc, 1);
             alloc_tr::construct(alloc, tail, Node{
                 *tail_obj, 
-                nullptr,
-                nullptr,
-                nullptr,
+                __null_ptr,
+                __null_ptr,
+                __null_ptr,
                 prev,
                 iter_row, 
                 iter_col
@@ -224,16 +223,17 @@ public:
 
     list_matrix(list_matrix&& __mx) noexcept : alloc(std::move(__mx.alloc)), head(__mx.head), 
                                     __names_row(__mx.__names_row), __names_col(__mx.__names_col), 
-                                    size_matrix(__mx.size_matrix), __sz(__mx.__sz)  {
+                                    size_matrix(__mx.size_matrix), __sz(__mx.__sz), __null_ptr(__mx.__null_ptr)  {
         __mx.head = nullptr;
         __mx.size_matrix = 0;
         __mx.__names_col = nullptr;
         __mx.__names_row = nullptr;
-
+        __mx.__null_ptr = nullptr;
     }
     // создание матрицы из массива 
     list_matrix(const std::vector<std::vector<int>>&__mx_dist, alloc_node && __alloc = alloc_node()) : 
-                                                    size_matrix(__mx_dist.size()), alloc(std::move(__alloc)), __sz(__mx_dist.size()) {
+                                                    size_matrix(__mx_dist.size()), alloc(std::move(__alloc)), __sz(__mx_dist.size()),
+                                                    __null_ptr(alloc.null_ptr_data()) {
         
         // заполнить список номеров вершин 
         __fill_list_names(); 
@@ -245,24 +245,24 @@ public:
         Node* iter_row = __names_row->right; // строка односвязный список 
 
         for(size_t i = 1; i < size_matrix; ++i) {
-            Node * prev_ptr = nullptr;  // предыдущий указатель          
+            Node * prev_ptr = __null_ptr;  // предыдущий указатель          
             Node* curr_ptr = head_row->down;  //текущий указатель 
             Node* iter_col = __names_col;
             //auto iter_col = names_col.begin(); 
             auto col_obj = row_obj->begin();
             // предыдущая строка  
-            for(Node*tail_col = head_row; tail_col != nullptr; tail_col = tail_col->right) {
+            for(Node*tail_col = head_row; tail_col != __null_ptr; tail_col = tail_col->right) {
                 curr_ptr = alloc_tr::allocate(alloc, 1);
                 alloc_tr::construct(alloc, curr_ptr, Node{
                     *col_obj,   
                     tail_col,
-                    nullptr,
-                    nullptr,
+                    __null_ptr,
+                    __null_ptr,
                     prev_ptr, 
                     iter_row,
                     iter_col
                 });
-                if (prev_ptr != nullptr) {
+                if (prev_ptr != __null_ptr) {
                     prev_ptr->right = curr_ptr;
                 }
                 tail_col->down = curr_ptr;
@@ -292,12 +292,12 @@ public:
                 //std::cout << i << std::endl;
                 __out->value = __beg->value;
                 //std::cout << (__beg->up - __beg) << " " << (__beg->right - __beg) << " " << (__beg->left - __beg)  << " "<< (__beg->down - __beg) << std::endl;
-                __out->up = (__beg->up == nullptr) ? nullptr : __out + (__beg->up - __beg);
-                __out->right = (__beg->right == nullptr) ? nullptr : __out + (__beg->right - __beg);
-                __out->left = (__beg->left == nullptr) ? nullptr : __out +  (__beg->left - __beg);
-                __out->down = (__beg->down == nullptr) ? nullptr : __out + (__beg->down - __beg);
-                __out->__it_col = (__beg->__it_col == nullptr) ? nullptr : __out + (__beg->__it_col - __beg);
-                __out->__it_row = (__beg->__it_row == nullptr) ? nullptr : __out + (__beg->__it_row - __beg);
+                __out->up = __out + (__beg->up - __beg);
+                __out->right =  __out + (__beg->right - __beg);
+                __out->left =  __out +  (__beg->left - __beg);
+                __out->down =  __out + (__beg->down - __beg);
+                __out->__it_col =  __out + (__beg->__it_col - __beg);
+                __out->__it_row = __out + (__beg->__it_row - __beg);
                 ++__beg;
                 ++__out;
             }
@@ -311,6 +311,7 @@ public:
         head = alloc.data() + std::distance(obj.alloc.data(), obj.head);    
         
         mem_copy(obj.head, obj.alloc.curr(), head);   
+        __null_ptr = alloc.null_ptr_data();
         /*Node* ptr_col = alloc.get_data_col_list();
         __names_col = ptr_col;
         Node* ptr_row = alloc.get_data_row_list();
@@ -399,7 +400,7 @@ public:
     size_type size() const noexcept { return size_matrix; }
 
     void clear() {
-        if (head == nullptr) {
+        if (head == __null_ptr) {
             return;
         }
        /* names_col.clear();
@@ -409,7 +410,7 @@ public:
 
         auto prev = head;
         auto tail = head->down;
-        while(tail != nullptr) {
+        while(tail != __null_ptr) {
             __clear_line(prev);
             prev = tail;
             tail = tail->down;
@@ -442,8 +443,8 @@ public:
         return col_iterator(it_row.ptr->__it_row->up); 
     }
 
-    row_iterator row_end() const noexcept { return row_iterator(nullptr); }
-    col_iterator col_end() const noexcept {return col_iterator(nullptr); }
+    row_iterator row_end() const noexcept { return row_iterator(__null_ptr); }
+    col_iterator col_end() const noexcept {return col_iterator(__null_ptr); }
     /*
     const std::list<std::pair<int, Node*>>& get_list_col()  { return names_col; }
     const std::list<std::pair<int, Node*>>& get_list_row() { return names_row; }
@@ -472,11 +473,13 @@ public:
     list_matrix&operator=(list_matrix && __mx) noexcept {
         alloc = std::move(__mx.alloc);
         head = __mx.head;
-        __names_row = __mx.__names_row;
-        __mx.__names_row = nullptr; 
-        __names_col = __mx.__names_row;
-        __mx.__names_col = nullptr;
+        __names_row = __mx.__names_row; 
+        __names_col = __mx.__names_col;
         size_matrix = __mx.size_matrix;
+        __null_ptr = __mx.__null_ptr;
+        __mx.__null_ptr = nullptr;
+        __mx.__names_row = nullptr;
+        __mx.__names_col = nullptr;
         __mx.head = nullptr;
         __mx.size_matrix = 0;
         return *this;
@@ -490,7 +493,7 @@ template<typename T, typename _Alloc>
 void list_matrix<T, _Alloc>::__clear_col(Node*head_col) {
     Node* prev = head_col;
     head_col = head_col->down;
-    while(head_col != nullptr) {
+    while(head_col != __null_ptr) {
         alloc_tr::destroy(alloc, &prev->value); 
         alloc_tr::deallocate(alloc, prev, 1);
         prev = head_col;
@@ -508,7 +511,7 @@ void list_matrix<T, _Alloc>::__erase_line(Node* ptr_row_head) {
         auto tail = head;
         // перевязать список
         Node * tail_col = __names_col;
-        for(; tail_col != nullptr; tail_col = tail_col->right) {
+        for(; tail_col != __null_ptr; tail_col = tail_col->right) {
             tail_col->up = tail; // up используется как привязка к основной матрице 
             tail = tail->right;
         }
@@ -518,13 +521,13 @@ void list_matrix<T, _Alloc>::__erase_line(Node* ptr_row_head) {
             tail = tail->right;
         }*/
     }
-    for(; col_head != nullptr; col_head = col_head->right) {
+    for(; col_head != __null_ptr; col_head = col_head->right) {
         Node*up_iter = col_head->up;
         Node*down_iter = col_head->down;
-        if (up_iter != nullptr) {
+        if (up_iter != __null_ptr) {
             up_iter->down = down_iter;
         } 
-        if (down_iter != nullptr) {
+        if (down_iter != __null_ptr) {
             down_iter->up = up_iter;
         }
     }
@@ -537,7 +540,7 @@ void list_matrix<T, _Alloc>::__erase_col(Node* ptr_col_head) {
         head = head->right;
         auto tail = head;
         Node *tail_row = __names_row;
-        for(; tail_row != nullptr; tail_row = tail_row->right) {
+        for(; tail_row != __null_ptr; tail_row = tail_row->right) {
             tail_row->up = tail;
             tail = tail->down;
         }
@@ -547,13 +550,13 @@ void list_matrix<T, _Alloc>::__erase_col(Node* ptr_col_head) {
             tail = tail->down;
         }*/
     }
-    for(; row_head != nullptr; row_head = row_head->down) {
+    for(; row_head != __null_ptr; row_head = row_head->down) {
         Node*left_iter = row_head->left;
         Node*right_iter = row_head->right;
-        if (left_iter != nullptr) {
+        if (left_iter != __null_ptr) {
             left_iter->right = right_iter;
         } 
-        if (right_iter != nullptr) {
+        if (right_iter != __null_ptr) {
             right_iter->left = left_iter;
         }
     }
@@ -580,7 +583,7 @@ void list_matrix<T, _Alloc>::erase(col_iterator it) {
     __erase_line(ptr->__it_row->up);
 
     // переписать
-    if (ptr->up != nullptr) {
+    if (ptr->up != __null_ptr) {
         __erase_row_element(ptr->up->__it_row, ptr->__it_row);
     } else {
         Node * next = ptr->__it_row->right;
@@ -592,7 +595,7 @@ void list_matrix<T, _Alloc>::erase(col_iterator it) {
     //names_row.erase(ptr->up->__it_row, ptr->__it_row);
     __erase_col(ptr->__it_col->up);
     // переписать 
-    if (ptr->left != nullptr) {
+    if (ptr->left != __null_ptr) {
         __erase_col_element(ptr->left->__it_col, ptr->__it_col);
     } else {
         Node * next = ptr->__it_col->right;
@@ -618,7 +621,7 @@ void list_matrix<T, _Alloc>::erase(col_iterator it) {
 template <typename T, typename _Alloc>
 void list_matrix<T, _Alloc>::__bind_list_and_mx() {
     Node*tail = head;
-    for(Node * p = __names_col; p != nullptr; p = p->right) {
+    for(Node * p = __names_col; p != __null_ptr; p = p->right) {
         p->up = tail;
         tail = tail->right;
     }
@@ -629,7 +632,7 @@ void list_matrix<T, _Alloc>::__bind_list_and_mx() {
     });
     */
     tail = head;
-    for(Node * p = __names_row; p != nullptr; p = p->right) {
+    for(Node * p = __names_row; p != __null_ptr; p = p->right) {
         p->up = tail;
         tail = tail->down;
     }
@@ -689,7 +692,7 @@ template<typename T, typename _Alloc>
 void list_matrix<T, _Alloc>::__clear_line(Node* row_begin) {
     Node* prev = row_begin;
     row_begin = row_begin->right;
-    while(row_begin != nullptr) {
+    while(row_begin != __null_ptr) {
         alloc_tr::destroy(alloc, &prev->value); 
         alloc_tr::deallocate(alloc, prev, 1);
         prev = row_begin;
@@ -821,19 +824,19 @@ void list_matrix<T, _Alloc>::__fill_names_col() {
     Node* element = alloc_tr::allocate(alloc, 1);
     alloc_tr::construct(alloc, element, Node{
         0, // value 
-        nullptr,  // up 
-        nullptr,  // right
-        nullptr,  // down 
-        nullptr,  // left
-        nullptr, // iterator 
-        nullptr // iterator
+        __null_ptr,  // up 
+        __null_ptr,  // right
+        __null_ptr,  // down 
+        __null_ptr,  // left
+        __null_ptr, // iterator 
+        __null_ptr // iterator
     });
     __names_col = element;
     Node*curr = __names_col;
     for(size_t i = 1; i < size_matrix; ++i) {
         Node*element = alloc_tr::allocate(alloc, 1);
         alloc_tr::construct(alloc, element, Node{
-            static_cast<int>(i), nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
+            static_cast<int>(i), __null_ptr, __null_ptr, __null_ptr, __null_ptr, __null_ptr, __null_ptr
         });
         curr->right = element;
         curr = curr->right;
@@ -845,19 +848,19 @@ void list_matrix<T, _Alloc>::__fill_names_row() {
     Node* element = alloc_tr::allocate(alloc, 1);
     alloc_tr::construct(alloc, element, Node{
         0, // value 
-        nullptr,  // up 
-        nullptr,  // right
-        nullptr,  // down 
-        nullptr,  // left
-        nullptr, // iterator 
-        nullptr // iterator
+        __null_ptr,  // up 
+        __null_ptr,  // right
+        __null_ptr,  // down 
+        __null_ptr,  // left
+        __null_ptr, // iterator 
+        __null_ptr // iterator
     });
     __names_row = element;
     Node*curr = __names_row;
     for(size_t i = 1; i < size_matrix; ++i) {
         Node*element = alloc_tr::allocate(alloc, 1);
         alloc_tr::construct(alloc, element, Node{
-            static_cast<int>(i), nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
+            static_cast<int>(i), __null_ptr, __null_ptr, __null_ptr, __null_ptr, __null_ptr, __null_ptr
         });
         curr->right = element;
         curr = curr->right;
