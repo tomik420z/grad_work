@@ -1,5 +1,3 @@
-#pragma GCC optimize("O3")
-
 #include "little_alg.hpp"
 #include "list_matrix.hpp"
 #include "linear_allocator.hpp"
@@ -9,6 +7,7 @@
 list_matrix<int, linear_allocator<int>> create_matrix_list(const std::string & f_name) {
     matrix_dist dist_mx(f_name);
     size_t n = dist_mx.get_matrix_dist().size();    
+    
     using alloc_ty = list_matrix<int, linear_allocator<int>>::alloc_node;
     alloc_ty alloc((n + 1));
     list_matrix<int, linear_allocator<int>> mx_li(dist_mx.get_matrix_dist(), std::move(alloc));
@@ -21,31 +20,15 @@ int main(int argc, char*argv[]) {
         return -1;
     }
     try {
-        
-    /*
-        auto li1 = create_matrix_list(argv[1]);
-       for(size_t i = 0; i < 3; ++i) {
-            auto it = li1.col_begin();
-            li1.erase(it);
-        }
-        list_matrix<int, linear_allocator<int>> li4 = li1;
-        li1.print_list_col();
-        li1.print_list_row(); 
-        li4.print_list_col();
-        li4.print_list_row();
-        std::cout << li1 << std::endl;
-        std::cout << li4 << std::endl;
-    */
-   
         auto li = create_matrix_list(argv[1]);
         execution_time tm;
         
-       // std::cout << "matrix_dist\n" << li << std::endl;
-        tm.start();
+    
         little_alg alg(li);
+        tm.start();
         alg();
         tm.finish();
-        std::cout << "time: "<< tm.get_time() << std::endl; 
+        std::cout << "time: "<< tm.get_str_time_in_second() << std::endl; 
         auto& v = alg.get_way();
         for(auto [v1, v2] : v) {
             std::cout << "(" << v1 << "," << v2 << ")";

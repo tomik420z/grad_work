@@ -24,16 +24,25 @@ public:
     using ptr_path_t = std::unique_ptr<path_t>;
 protected:
     using stack_call_t = std::stack<std::tuple<matrix_t, way_t, value_type>>;
-    using vec_thread = std::vector<pthread_t>;
     static constexpr value_type infinity_1 = std::numeric_limits<value_type>::max(); // inf1
     static constexpr value_type infinity_2 = infinity_1 - 1;                         // inf2
     static constexpr value_type inf = infinity_1;                                    // inf
+    omp_nest_lock_t r_mtx;
     omp_lock_t mtx;
     random_accses_mx_t mx_dist; // матрица достижимости 
     value_type record; // длина самого короткого пути 
     path_t min_way;     // самый короткий путь 
     ptr_matrix_t ptr_mx; // указатель на матрицу списков 
     std::stack<std::tuple<ptr_matrix_t, ptr_path_t, value_type>> data_stack;
+    int atomic_inc;
+    std::vector<matrix_t*> array_matrix_conf;
+    std::vector<path_t*> array_path_conf;
+
+    std::vector<matrix_t*> array_matrix_conf_2;
+    std::vector<path_t*> array_path_conf_2;
+    //matrix_t * mx_ptr;
+    //path_t * path_ptr;
+    
     /*
     typedef struct arguments_function_thread_tag {
         sem_t *semaphore;
@@ -67,9 +76,22 @@ public:
 
     little_alg(matrix_t & mx) : mx_dist(copy_matrix_list(mx)), 
                                 record(inf), min_way(mx.size()), 
-                                ptr_mx(std::make_unique<matrix_t>(mx)) {
-                                    omp_init_lock(&mtx);
-                                }   
+                                ptr_mx(std::make_unique<matrix_t>(mx)), 
+                                atomic_inc(0) {
+        const auto& num_threads = omp_get_max_threads();
+        //array_matrix_conf.reserve(num_threads);
+        //array_path_conf.reserve(num_threads);
+        //array_matrix_conf_2.reserve(num_threads);
+        //array_path_conf_2.reserve(num_threads);
+        /*for(size_t i = 0; i < num_threads; ++i) {
+            array_matrix_conf.push_back(reinterpret_cast<matrix_t*>(::operator new(sizeof(matrix_t)))); 
+            array_path_conf.push_back(reinterpret_cast<path_t*>(::operator new(sizeof(path_t))));
+            array_matrix_conf_2.push_back(reinterpret_cast<matrix_t*>(::operator new(sizeof(matrix_t)))); 
+            array_path_conf_2.push_back(reinterpret_cast<path_t*>(::operator new(sizeof(path_t))));
+        }*/
+        //mx_ptr = reinterpret_cast<matrix_t*>(::operator new(sizeof(matrix_t)));
+        //path_ptr = reinterpret_cast<path_t*>(::operator new(sizeof(path_t)));
+    }   
 
     // поиск минимального элемента
     template<typename Iter>
@@ -92,9 +114,10 @@ public:
     }
 
     void line_conversion(matrix_t & mx, value_type& border_cur) {
-        auto mx_end_col = mx.col_end(); 
-        auto mx_end_row = mx.row_end(); 
-        for(auto it_row = mx.head_col(); it_row != mx_end_row; ++it_row) {
+        const auto mx_end_col = mx.col_end(); 
+        const auto mx_end_row = mx.row_end(); 
+        auto it_row = mx.head_col();
+        for(;it_row != mx_end_row; ++it_row) {
             value_type min_val = get_min_element(mx.get_col_iter(it_row), mx_end_col);
             border_cur += min_val;
             sub_min_element(mx.get_col_iter(it_row), mx_end_col, min_val);
@@ -103,13 +126,18 @@ public:
     
     // преобразование столбцов 
     void row_conversion(matrix_t& mx, value_type & border_cur) {
-        auto col_end = mx.col_end();
-        auto row_end = mx.row_end();
-        for(auto it_col = mx.col_begin(); it_col != col_end; ++it_col) {
+        const auto col_end = mx.col_end();
+        const auto row_end = mx.row_end();
+        auto it_col = mx.col_begin();
+        ptrdiff_t n = mx.size();
+//#pragma omp parallel for
+        for(ptrdiff_t i = 0; i < n; ++i) {
             value_type min_val = get_min_element(mx.get_row_iter(it_col), row_end);
+  //          #pragma omp atomic
             border_cur+= min_val;
             // прибавление к нижней границе min_val
             sub_min_element(mx.get_row_iter(it_col), row_end, min_val);
+            ++it_col;
         }
     }
 
@@ -344,63 +372,104 @@ public:
 
     }
     */
-    void recoursive_procedure(matrix_t M1, path_t way, value_type border_lim) {
 
-#pragma omp parallel 
+    void helper_func(matrix_t *M, path_t *c, value_type border_lim) {
+        #pragma omp task shared(M, c) 
+        {
+            matrix_t tmp_M = std::move(*M);
+            path_t tmp_w = std::move(*c);
+            delete c;
+            delete M;
+            recoursive_procedure(std::move(tmp_M), std::move(tmp_w), border_lim);   
+        }
+    }
+
+    void recoursive_procedure(matrix_t && M1, path_t && way, value_type border_lim) {
+
+#pragma omp parallel num_threads(8)
 {
-#pragma omp single nowait
-    {
-    
+#pragma omp single /*nowait*/
+    {   
+        //std::cout << record <<"  atomic_inc: " << atomic_inc << std::endl;
+        int copy_inc;
+        #pragma omp atomic read 
+        copy_inc = atomic_inc;
 
-        value_type border_cur = 0; 
+        if (copy_inc > 7) {
+            omp_set_nested(0);
+        } else {
+            omp_set_nested(1);
+        }
+
+
         initial_conversion(M1, border_lim);
-
-
         if (border_lim < record) {
             auto it = find_min_coord(M1);
-            auto copy_way = way;
+            path_t copy_way = way;
             way.add_edge(mx_dist, M1.get_edge(it));
             value_type temp = *it;
             (*it) = infinity_2;
-            auto M2 = M1; 
+            matrix_t M2 = M1; 
             (*it) = temp;
             auto it_kl = set_inf_l_k(M1, it);
             (*it_kl) = infinity_1;
             if (M1.size() > 2) {
-
-#pragma omp task shared(M1, way, border_lim)
+                #pragma omp atomic update
+                ++atomic_inc;
+                matrix_t * mx_ptr = reinterpret_cast<matrix_t*>(::operator new(sizeof(matrix_t)));
+                path_t * path_ptr = reinterpret_cast<path_t*>(::operator new(sizeof(path_t)));
+                new (mx_ptr) matrix_t(std::move(M1));
+                new (path_ptr) path_t(std::move(way));
+                helper_func(mx_ptr, path_ptr, border_lim);
+      /*          
+#pragma omp task shared(M1, way)
                 {
                     recoursive_procedure(std::move(M1), std::move(way), border_lim);
                 }
+        */
             } else {
                 bool fl = true; 
                 add_the_last_two_edges(way, M1, fl);
                 long long sum = way.get_cost();
-#pragma omp critical
-                {
+                    #pragma omp critical
+                    {
+                    
                     if (sum < record) {
                         min_way = way;
                         record = sum;
                     }
-                }
-                //std::cout << "record = "<< record << std::endl;
-                //buff << *M1 << std::endl;
-                //std::cout << "----------------------------------\n";
-                //print_way(*way, sum);
-            }
-#pragma omp task firstprivate(M2, copy_way, border_lim)
+                    
+                    }
+            }  
+            /*
+            #pragma omp task shared(M2, copy_way) 
             {
-                recoursive_procedure(std::move(M2),  
-                    std::move(copy_way),
-                    border_lim);
-                //print_way(copy_way, sum);
+                matrix_t M = std::move(*M2);
+                path_t c = std::move(*copy_way);
+                delete M2;
+                delete copy_way;
+                recoursive_procedure(std::move(M), std::move(c), border_lim);
             }
-        } 
-//#pragma omp taskwait
-    }
-}
+            */
+            #pragma omp atomic update
+                ++atomic_inc;
+            matrix_t * mx_ptr = reinterpret_cast<matrix_t*>(::operator new(sizeof(matrix_t)));
+            path_t * path_ptr = reinterpret_cast<path_t*>(::operator new(sizeof(path_t)));
+            new (mx_ptr) matrix_t(std::move(M2));
+            new (path_ptr) path_t(std::move(copy_way));
+            helper_func(mx_ptr, path_ptr, border_lim);
 
-    } 
+        }
+
+    
+    #pragma omp atomic update
+        --atomic_inc;
+    }
+
+    }
+    }
+    //
+
 
 
     void operator()() {
@@ -418,11 +487,14 @@ public:
             //record = calc_distance(min_way);
             return;
         }
-        path_t w(ptr_mx->size());        
-        omp_set_num_threads(8);
-        omp_set_dynamic(0);
+        path_t w(ptr_mx->size()); 
+        omp_set_dynamic(1);
+        omp_set_nested(1);
+        ++atomic_inc;
         recoursive_procedure(std::move(*ptr_mx),
                 std::move(w), 0);
+
+        //std::cout << atomic_inc << std::endl;
     
     }
 
