@@ -81,6 +81,7 @@ public:
         const auto& num_threads = omp_get_max_threads();
         //array_matrix_conf.reserve(num_threads);
         //array_path_conf.reserve(num_threads);
+
         //array_matrix_conf_2.reserve(num_threads);
         //array_path_conf_2.reserve(num_threads);
         /*for(size_t i = 0; i < num_threads; ++i) {
@@ -383,7 +384,22 @@ public:
             recoursive_procedure(std::move(tmp_M), std::move(tmp_w), border_lim);   
         }
     }
+/*
+    void helper_func_2(matrix_t & M, path_t & C, value_type border_lim) {
+        sem_t sm;
+        sem_init(&sm, 1, 0);
+        #pragma omp task firstprivate(M, C) 
+        {
+            auto tmp_M = std::move(M);
+            auto tmp_w = std::move(C);
+            sem_post(&sm);
 
+            recoursive_procedure(std::move(tmp_M), std::move(tmp_w), border_lim);   
+        }  
+        sem_wait(&sm);
+        sem_destroy(&sm);
+    }
+*/
     void recoursive_procedure(matrix_t && M1, path_t && way, value_type border_lim) {
 
 #pragma omp parallel num_threads(8)
@@ -421,25 +437,21 @@ public:
                 new (mx_ptr) matrix_t(std::move(M1));
                 new (path_ptr) path_t(std::move(way));
                 helper_func(mx_ptr, path_ptr, border_lim);
-      /*          
-#pragma omp task shared(M1, way)
-                {
-                    recoursive_procedure(std::move(M1), std::move(way), border_lim);
-                }
-        */
+
             } else {
                 bool fl = true; 
                 add_the_last_two_edges(way, M1, fl);
                 long long sum = way.get_cost();
-                    #pragma omp critical
-                    {
-                    
-                    if (sum < record) {
-                        min_way = way;
+                    #pragma omp atmic read 
+                    auto c_record = record;
+
+                    if (sum < c_record) {
+                        #pragma omp atomic write 
                         record = sum;
+                        #pragma omp critical
+                        min_way = way;
                     }
                     
-                    }
             }  
             /*
             #pragma omp task shared(M2, copy_way) 
