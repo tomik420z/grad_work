@@ -79,17 +79,16 @@ public:
                                 ptr_mx(std::make_unique<matrix_t>(mx)), 
                                 atomic_inc(0) {
         const auto& num_threads = omp_get_max_threads();
-        //array_matrix_conf.reserve(num_threads);
-        //array_path_conf.reserve(num_threads);
-
+        array_matrix_conf.reserve(num_threads);
+        array_path_conf.reserve(num_threads);
         //array_matrix_conf_2.reserve(num_threads);
         //array_path_conf_2.reserve(num_threads);
-        /*for(size_t i = 0; i < num_threads; ++i) {
-            array_matrix_conf.push_back(reinterpret_cast<matrix_t*>(::operator new(sizeof(matrix_t)))); 
-            array_path_conf.push_back(reinterpret_cast<path_t*>(::operator new(sizeof(path_t))));
-            array_matrix_conf_2.push_back(reinterpret_cast<matrix_t*>(::operator new(sizeof(matrix_t)))); 
-            array_path_conf_2.push_back(reinterpret_cast<path_t*>(::operator new(sizeof(path_t))));
-        }*/
+        for(size_t i = 0; i < num_threads; ++i) {
+            array_matrix_conf.emplace_back(reinterpret_cast<matrix_t*>(::operator new(sizeof(matrix_t)))); 
+            array_path_conf.emplace_back(reinterpret_cast<path_t*>(::operator new(sizeof(path_t))));
+            //array_matrix_conf_2.push_back(reinterpret_cast<matrix_t*>(::operator new(sizeof(matrix_t)))); 
+            //array_path_conf_2.push_back(reinterpret_cast<path_t*>(::operator new(sizeof(path_t))));
+        }
         //mx_ptr = reinterpret_cast<matrix_t*>(::operator new(sizeof(matrix_t)));
         //path_ptr = reinterpret_cast<path_t*>(::operator new(sizeof(path_t)));
     }   
@@ -264,7 +263,7 @@ public:
         }
     }
 
-    void initial_conversion(matrix_t & M, value_type & border_lim) {
+    void matrix_reduction(matrix_t & M, value_type & border_lim) {
         line_conversion(M, border_lim);
         row_conversion(M, border_lim);
     }
@@ -417,9 +416,11 @@ public:
             omp_set_nested(1);
         }
 
-
-        initial_conversion(M1, border_lim);
+        //std::cout << M1 << std::endl; 
+        matrix_reduction(M1, border_lim);
+        
         if (border_lim < record) {
+            
             auto it = find_min_coord(M1);
             path_t copy_way = way;
             way.add_edge(mx_dist, M1.get_edge(it));
@@ -429,15 +430,17 @@ public:
             (*it) = temp;
             auto it_kl = set_inf_l_k(M1, it);
             (*it_kl) = infinity_1;
+            
             if (M1.size() > 2) {
                 #pragma omp atomic update
                 ++atomic_inc;
+                
                 matrix_t * mx_ptr = reinterpret_cast<matrix_t*>(::operator new(sizeof(matrix_t)));
                 path_t * path_ptr = reinterpret_cast<path_t*>(::operator new(sizeof(path_t)));
                 new (mx_ptr) matrix_t(std::move(M1));
                 new (path_ptr) path_t(std::move(way));
                 helper_func(mx_ptr, path_ptr, border_lim);
-
+                
             } else {
                 bool fl = true; 
                 add_the_last_two_edges(way, M1, fl);
@@ -453,24 +456,14 @@ public:
                     }
                     
             }  
-            /*
-            #pragma omp task shared(M2, copy_way) 
-            {
-                matrix_t M = std::move(*M2);
-                path_t c = std::move(*copy_way);
-                delete M2;
-                delete copy_way;
-                recoursive_procedure(std::move(M), std::move(c), border_lim);
-            }
-            */
             #pragma omp atomic update
                 ++atomic_inc;
+            
             matrix_t * mx_ptr = reinterpret_cast<matrix_t*>(::operator new(sizeof(matrix_t)));
             path_t * path_ptr = reinterpret_cast<path_t*>(::operator new(sizeof(path_t)));
             new (mx_ptr) matrix_t(std::move(M2));
             new (path_ptr) path_t(std::move(copy_way));
-            helper_func(mx_ptr, path_ptr, border_lim);
-
+            helper_func(mx_ptr, path_ptr, border_lim);     
         }
 
     
@@ -486,7 +479,6 @@ public:
 
     void operator()() {
 
-        buff.open("48.txt");
         //mx_temp.print();
         if (ptr_mx->size() == 1) {
             min_way.add_edge(mx_dist, ptr_mx->get_edge(ptr_mx->col_begin()));   
@@ -503,9 +495,10 @@ public:
         omp_set_dynamic(1);
         omp_set_nested(1);
         ++atomic_inc;
+        
         recoursive_procedure(std::move(*ptr_mx),
                 std::move(w), 0);
-
+        
         //std::cout << atomic_inc << std::endl;
     
     }

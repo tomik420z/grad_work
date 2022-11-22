@@ -45,6 +45,8 @@ protected:
     alloc_node alloc;
     Node * __names_col;
     Node* __names_row;
+    Node * __min_val_col_list;
+    Node* __min_val_row_list;
     Node* head;
     Node* __null_ptr;
     size_type size_matrix;
@@ -61,7 +63,6 @@ protected:
 
     static void __ignore_spaces_until_char(std::ifstream &, char);   
     static size_type __parsing_size(std::ifstream &);
-    void __fill_list_names();
     void __read_matrix(std::ifstream &);
     void __fill_first_line(std::ifstream &);
     static int __parsing_number(std::ifstream &);
@@ -69,10 +70,15 @@ protected:
     void __clear_col(Node *);
     void __copy_first_line(const list_matrix & obj);
     void __bind_list_and_mx();
+    void __bind_list_names_and_list_min_vals();
     void __erase_line(Node *);
     void __erase_col(Node *);
     void __fill_names_col();
     void __fill_names_row();
+    void __fill_min_values_col();
+    void __fill_min_values_row();
+    void __fill_list_names();
+    void __fill_list_min_vals();
     void __erase_col_element(Node*, Node*);
     void __erase_row_element(Node*, Node*);
 
@@ -139,8 +145,7 @@ public:
     void print_list_row() {
         Node*tail = __names_row;
         while(tail != __null_ptr) {
-            std::cout <<"(" << tail << " ";
-            std::cout << tail->value << ")";
+            std::cout  << "("<< tail->value << " " << tail->left->value <<")";
             tail = tail->right;
         } 
         std::cout << '\n';
@@ -149,8 +154,7 @@ public:
     void print_list_col() {
         Node*tail = __names_col;
         while(tail != __null_ptr) {
-            std::cout << "(" << tail << " ";
-            std::cout << tail->value << ")";
+            std::cout  << "("<< tail->value << " " << tail->left->value <<")";
             tail = tail->right;
         } 
         std::cout << '\n';
@@ -221,7 +225,9 @@ public:
         }
     }
 
-    list_matrix(list_matrix&& __mx) noexcept : alloc(std::move(__mx.alloc)), head(__mx.head), 
+    list_matrix(list_matrix&& __mx) noexcept : alloc(std::move(__mx.alloc)),
+                                    __min_val_col_list(__mx.__min_val_col_list),
+                                    __min_val_row_list(__mx.__min_val_row_list), head(__mx.head), 
                                     __names_row(__mx.__names_row), __names_col(__mx.__names_col), 
                                     size_matrix(__mx.size_matrix), __sz(__mx.__sz), __null_ptr(__mx.__null_ptr)  {
         __mx.head = nullptr;
@@ -229,16 +235,19 @@ public:
         __mx.__names_col = nullptr;
         __mx.__names_row = nullptr;
         __mx.__null_ptr = nullptr;
+        __mx.__min_val_col_list = nullptr;
+        __mx.__min_val_row_list = nullptr;
     }
     // создание матрицы из массива 
     list_matrix(const std::vector<std::vector<int>>&__mx_dist, alloc_node && __alloc = alloc_node()) : 
                                                     size_matrix(__mx_dist.size()), alloc(std::move(__alloc)), __sz(__mx_dist.size()),
                                                     __null_ptr(alloc.null_ptr_data()) {
         
-        // заполнить список номеров вершин 
-        __fill_list_names(); 
+        __fill_list_names(); // заполнить список номеров вершин 
+        __fill_list_min_vals(); // создать список минимальных коэффициентов
+        __bind_list_names_and_list_min_vals(); // связать списки имён со списками мин коэф. 
         // скопировать первую строку из таблицы 
-        __copy_first_line(__mx_dist[0]);
+        __copy_first_line(__mx_dist[0]); // скопировать первую строку из таблицы 
         auto row_obj = ++__mx_dist.begin(); //obj.head->down; 
         Node*head_row = head;  // указатели на начало списка (строки) 
         //auto iter_row = ++names_row.begin(); // идём с первой строки 
@@ -307,10 +316,14 @@ public:
         __names_col = alloc.get_data_col_list();
         mem_copy(obj.__names_col, obj.__names_row, __names_col);
         __names_row = alloc.get_data_row_list();
-        mem_copy(obj.__names_row, obj.head, __names_row);
+        mem_copy(obj.__names_row, obj.__min_val_col_list, __names_row);
+        __min_val_col_list = alloc.get_data_min_val_col();
+        mem_copy(obj.__min_val_col_list, obj.__min_val_row_list,__min_val_col_list);
+        __min_val_row_list = alloc.get_data_min_val_row();
+        mem_copy(obj.__min_val_row_list, obj.head, __min_val_row_list);
         head = alloc.data() + std::distance(obj.alloc.data(), obj.head);    
-        
         mem_copy(obj.head, obj.alloc.curr(), head);   
+
         __null_ptr = alloc.null_ptr_data();
         /*Node* ptr_col = alloc.get_data_col_list();
         __names_col = ptr_col;
@@ -419,8 +432,13 @@ public:
         head = nullptr;
     }
 
+
     ~list_matrix() {
-        clear();
+        //clear();
+    }
+
+    void this_not_clear() {
+        alloc.dont_clear();
     }
 
 
@@ -472,15 +490,14 @@ public:
 
     list_matrix&operator=(list_matrix && __mx) noexcept {
         alloc = std::move(__mx.alloc);
+        __min_val_col_list = __mx.__min_val_col_list;
+        __min_val_row_list = __mx.__min_val_row_list;
         head = __mx.head;
         __names_row = __mx.__names_row; 
         __names_col = __mx.__names_col;
         size_matrix = __mx.size_matrix;
         __null_ptr = __mx.__null_ptr;
-        __mx.__null_ptr = nullptr;
-        __mx.__names_row = nullptr;
-        __mx.__names_col = nullptr;
-        __mx.head = nullptr;
+        __mx.__null_ptr = __mx.__names_row = __mx.__names_col = __mx.head = __mx.__min_val_col_list = __mx.__min_val_row_list = nullptr;
         __mx.size_matrix = 0;
         return *this;
     }
@@ -619,29 +636,34 @@ void list_matrix<T, _Alloc>::erase(col_iterator it) {
 
 
 template <typename T, typename _Alloc>
+void list_matrix<T, _Alloc>::__bind_list_names_and_list_min_vals() {
+    Node*tail = __min_val_col_list;
+    for(Node * p = __names_col; p != __null_ptr; p = p->right) {
+        p->left = tail;
+        tail = tail->right;
+    }
+    
+    tail = __min_val_row_list;
+    for(Node * p = __names_row; p != __null_ptr; p = p->right) {
+        p->left = tail;
+        tail = tail->right;
+    }
+}
+
+
+template <typename T, typename _Alloc>
 void list_matrix<T, _Alloc>::__bind_list_and_mx() {
     Node*tail = head;
     for(Node * p = __names_col; p != __null_ptr; p = p->right) {
         p->up = tail;
         tail = tail->right;
     }
-    /*
-    std::for_each(std::begin(names_col), std::end(names_col), [&tail](auto & p){
-        p.second = tail;
-        tail = tail->right;
-    });
-    */
+    
     tail = head;
     for(Node * p = __names_row; p != __null_ptr; p = p->right) {
         p->up = tail;
         tail = tail->down;
     }
-    /*
-    std::for_each(std::begin(names_row), std::end(names_row), [&tail](auto& p){
-        p.second = tail;
-        tail = tail->down;
-    });
-    */
 }
 /*
 template<typename T, typename _Alloc>
@@ -843,6 +865,31 @@ void list_matrix<T, _Alloc>::__fill_names_col() {
     }
 }
 
+template<typename T, typename _Alloc>
+void list_matrix<T, _Alloc>::__fill_min_values_col() {
+    Node* element = alloc_tr::allocate(alloc, 1);
+    alloc_tr::construct(alloc, element, Node{
+        0, // value 
+        __null_ptr,  // up 
+        __null_ptr,  // right
+        __null_ptr,  // down 
+        __null_ptr,  // left
+        __null_ptr, // iterator 
+        __null_ptr // iterator
+    });
+    __min_val_col_list = element;
+    Node*curr = __min_val_col_list;
+    for(size_t i = 1; i < size_matrix; ++i) {
+        Node*element = alloc_tr::allocate(alloc, 1);
+        alloc_tr::construct(alloc, element, Node{
+            static_cast<int>(i), __null_ptr, __null_ptr, __null_ptr, __null_ptr, __null_ptr, __null_ptr
+        });
+        curr->right = element;
+        curr = curr->right;
+    }
+}
+
+
 template <typename T, typename _Alloc>
 void list_matrix<T, _Alloc>::__fill_names_row() {
     Node* element = alloc_tr::allocate(alloc, 1);
@@ -866,6 +913,38 @@ void list_matrix<T, _Alloc>::__fill_names_row() {
         curr = curr->right;
     }
 }
+
+
+template <typename T, typename _Alloc>
+void list_matrix<T, _Alloc>::__fill_min_values_row() {
+    Node* element = alloc_tr::allocate(alloc, 1);
+    alloc_tr::construct(alloc, element, Node{
+        0, // value 
+        __null_ptr,  // up 
+        __null_ptr,  // right
+        __null_ptr,  // down 
+        __null_ptr,  // left
+        __null_ptr, // iterator 
+        __null_ptr // iterator
+    });
+    __min_val_row_list = element;
+    Node*curr = __min_val_row_list;
+    for(size_t i = 1; i < size_matrix; ++i) {
+        Node*element = alloc_tr::allocate(alloc, 1);
+        alloc_tr::construct(alloc, element, Node{
+            0, __null_ptr, __null_ptr, __null_ptr, __null_ptr, __null_ptr, __null_ptr
+        });
+        curr->right = element;
+        curr = curr->right;
+    }
+}
+
+template<typename T, typename _Alloc>
+void list_matrix<T, _Alloc>::__fill_list_min_vals() { 
+    __fill_min_values_col(); // заполнить список столбцов
+    __fill_min_values_row(); // заполнить список строк     
+}
+
 
 template<typename T, typename _Alloc>
 void list_matrix<T, _Alloc>::__fill_list_names() {
@@ -951,13 +1030,16 @@ std::ostream& operator<<(std::ostream &os, list_matrix<T, _Alloc> & mx) {
         for(auto it_col = mx.get_col_iter(it_row); it_col != mx.col_end(); ++it_col) {
             std::cout.width(7);
             if (*it_col == list_matrix<T, _Alloc>::inf) {
-                std::cout << "(" << it_col.data() << " "<< "inf1" << ")";
+                std::cout << "(" << "inf" << ")";
             } else if (*it_col == list_matrix<T, _Alloc>::inf - 1) {
-                std::cout << "(" << it_col.data() << " " << "inf2" << ")";
+                std::cout << "(" << "inf2" << ")";
             } else {
-                std::cout << "(" << it_col.data() << " " << *it_col << ")";
+                std::cout << "(" << *it_col << ")";
             }
+            
         }
+
+        
         //++it_li;
         std::cout << std::endl;
     }
