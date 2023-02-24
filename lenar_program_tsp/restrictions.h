@@ -8,15 +8,15 @@
 #include "objective_function.h"
 #include "linear_equation.h"
 #include "set_linear_eq.h"
-#include "fractional_num.h"
-
+//#include "fractional_num.h"
+#include <boost/ratio/detail/mpl/abs.hpp>
 
 /// @brief класс, который хранит ограничения(таблицей) для сиплекс метода  
 class restrictions {
 public: 
     using vec_index_variables = std::vector<std::variant<linear_equation<EQUAL>, linear_equation<LESS_EQ>, linear_equation<MORE_EQ>>>; // массив индексов 
-    using container = std::vector<std::vector<fractional_num>>; // множество ограничений
-    using set_free_members = std::vector<fractional_num>; // строка свободных членов 
+    using container = std::vector<std::vector<rational<int128_t>>>; // множество ограничений
+    using set_free_members = std::vector<rational<int128_t>>; // строка свободных членов 
     using iterator = container::iterator;  
     using const_iterator = container::const_iterator; 
     using member_iterator = set_free_members::iterator;
@@ -61,7 +61,7 @@ public:
     restrictions(const set_linear_eq& lin_sys, size_t count_variables, size_t __n):
                         __count_column(count_variables + __calc_count_free_var(lin_sys)), 
                         __count_line(lin_sys.size()), 
-                        linear_system(__count_line, std::vector<fractional_num>(__count_column, 0)), 
+                        linear_system(__count_line, std::vector<rational<int128_t>>(__count_column, 0)), 
                         __n(__n), vec_free_mem(), index_addtional_variables(count_variables), vec_ratio() { 
         vec_free_mem.reserve(__count_line);
         vec_ratio.reserve(__count_line);
@@ -109,7 +109,7 @@ public:
     ptrdiff_t find_max_b() {
         // найти первый отрицательный элемент 
         auto __iter = std::find_if(std::begin(vec_free_mem), std::end(vec_free_mem), [](const auto el){
-            return el.check_less_zero();
+            return el < 0;
         });
         // если такой отсутвует, то выход
         if (__iter == vec_free_mem.end()) {
@@ -117,14 +117,14 @@ public:
         }
         // иначе ищем самый большой по модулую отрицательный элемент
         for(auto it = __iter + 1; it != vec_free_mem.end(); ++it) {
-            if ((*it).check_less_zero() && fractional_num::absf(*it) > fractional_num::absf(*__iter)) {
+            if (*it < 0 && boost::abs(*it) > boost::abs(*__iter)) {
                 __iter = it;
             }
         }
         return std::distance(vec_free_mem.begin(), __iter);
     }
     
-    void add_new_restriction_less(std::vector<fractional_num>&& vec_value, fractional_num b) {
+    void add_new_restriction_less(std::vector<rational<int128_t>>&& vec_value, rational<int128_t> b) {
         ++__count_column;
         ++__count_line;
         for(auto & line : linear_system) { // ресайзим по столбцам (+1 доп столбец) 
@@ -199,16 +199,16 @@ public:
         return vec_free_mem;
     }
 
-    std::vector<fractional_num>& back() noexcept {
+    std::vector<rational<int128_t>>& back() noexcept {
         return linear_system.back();
     }
 
 
-    std::vector<fractional_num>& operator[](size_t i) {
+    std::vector<rational<int128_t>>& operator[](size_t i) {
         return linear_system[i];
     }
 
-    const std::vector<fractional_num>& operator[](size_t i) const {
+    const std::vector<rational<int128_t>>& operator[](size_t i) const {
         return linear_system[i];
     }
 

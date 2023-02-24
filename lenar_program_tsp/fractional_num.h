@@ -5,14 +5,18 @@
 #include <cmath>
 #include <limits>
 #include <numeric>
-
+#include <boost/multiprecision/cpp_int.hpp>
+#include <boost/math/common_factor.hpp>
+#include <boost/ratio/detail/mpl/abs.hpp>
 class fractional_num
 {
 private:
-    using __integer = long long; 
-    __integer numerator; // числитель
-    size_t denominator; // знаменатель
+    using integer = boost::multiprecision::int1024_t;
+    using uinteger = boost::multiprecision::uint1024_t; 
+    integer numerator; // числитель
+    uinteger denominator; // знаменатель
 public:
+
 
     /// @brief конструктор по умолчанию 
     fractional_num() noexcept : numerator(0), denominator(1) {}
@@ -25,10 +29,10 @@ public:
         ratsimp();
     }*/
 
-    fractional_num(int val) noexcept : numerator(static_cast<__integer>(val)), denominator(1) {}
+    fractional_num(int val) noexcept : numerator(static_cast<integer>(val)), denominator(1) {}
 
 
-    fractional_num(__integer numerator, size_t denominator) noexcept : numerator(numerator), denominator(denominator) {
+    fractional_num(integer numerator, uinteger denominator) noexcept : numerator(numerator), denominator(denominator) {
         
         if (denominator == 0) {
             std::cout << "init 0";
@@ -42,19 +46,20 @@ public:
 
     //fractional_num(int val) noexcept : numerator(static_cast<__integer>(val)), denominator(1) {}
 
-    fractional_num(size_t val) noexcept : numerator(static_cast<__integer>(val)), denominator(1) {}
+    fractional_num(size_t val) noexcept : numerator(static_cast<integer>(val)), denominator(1) {}
 
     fractional_num(double x) = delete;
 
     /// @brief упростить дробь 
     void ratsimp() {
         if (denominator == 0) {
-            std::cout << "ratsimp zero" << std::endl;
+            std::cout << "error ratsimp zero" << std::endl;
         }
         if (numerator == 0) { denominator = 1; return; }
-        size_t num = std::gcd(numerator, denominator); // НОД
-        numerator /= static_cast<__integer>(num);
-        denominator /= num;
+
+        integer num = boost::math::gcd(numerator, static_cast<integer>(denominator)); // НОД
+        numerator /= static_cast<integer>(num);
+        denominator /= static_cast<uinteger>(num);
         //std::cout << numerator << "  " << denominator << std::endl;
     }
 
@@ -68,7 +73,7 @@ public:
     }
     
     fractional_num& operator=(int num) noexcept {
-        numerator = static_cast<__integer>(num);
+        numerator = static_cast<integer>(num);
         denominator = 1;
         return *this;
     }
@@ -88,19 +93,20 @@ public:
     
 
     fractional_num& operator=(double x) {
-        numerator = static_cast<__integer>(x);
+        numerator = static_cast<integer>(x);
         denominator = 1;
         return *this;
     }
-    // переписать !!!!!! неправильно 
+
     fractional_num operator+(const fractional_num& num) const noexcept {
         
         fractional_num res;
-        size_t __gcd = std::gcd(denominator, num.denominator);
-        size_t __b = denominator / __gcd;
-        size_t __d = num.denominator / __gcd;
-        res.numerator = numerator * static_cast<__integer>(__d) + num.numerator * static_cast<__integer>(__b);
-        res.denominator = (denominator / __gcd) * num.denominator;
+    //    size_t __gcd = std::gcd(denominator, num.denominator);
+    //    size_t __b = denominator / __gcd;
+    //    size_t __d = num.denominator / __gcd;
+      //  res.numerator = numerator * static_cast<__integer>(__d) + num.numerator * static_cast<__integer>(__b);
+      //  res.denominator = (denominator / __gcd) * num.denominator;
+        res.numerator = numerator * num.denominator +  num.numerator * denominator;
         res.ratsimp();
         return res;
     }
@@ -108,12 +114,16 @@ public:
     fractional_num operator-(const fractional_num& num) const noexcept {
         //std::cout << "-";
         fractional_num res;
+        /*
         size_t __gcd = std::gcd(denominator, num.denominator);
         size_t __b = denominator / __gcd;
         size_t __d = num.denominator / __gcd;
         res.numerator = numerator * static_cast<__integer>(__d) - num.numerator * static_cast<__integer>(__b);
         res.denominator = (denominator / __gcd) * num.denominator;
+        */
+        res.numerator = numerator * num.denominator - num.numerator * denominator;
         res.ratsimp();
+        //res.ratsimp();
         return res;
     }
 
@@ -132,12 +142,12 @@ public:
     fractional_num operator/(const fractional_num& num) const noexcept {
         fractional_num res;
         if (num.numerator < 0) {
-            res.numerator = - numerator *  static_cast<__integer>(num.denominator);
-            res.denominator = denominator * static_cast<size_t>(std::abs(num.numerator));
+            res.numerator = - numerator *  static_cast<integer>(num.denominator);
+            res.denominator = denominator * static_cast<uinteger>(boost(num.numerator));
             res.ratsimp();
         } else {
-            res.numerator = numerator * static_cast<__integer>(num.denominator);
-            res.denominator = denominator * static_cast<size_t>(num.numerator);
+            res.numerator = numerator * static_cast<integer>(num.denominator);
+            res.denominator = denominator * static_cast<uinteger>(num.numerator);
             res.ratsimp();
         }
         return res;
@@ -150,22 +160,27 @@ public:
     }
 
     fractional_num& operator+=(const fractional_num& num) noexcept {
-        size_t __gcd = std::gcd(denominator, num.denominator);
+        /*size_t __gcd = std::gcd(denominator, num.denominator);
         size_t __b = denominator / __gcd;
         size_t __d = num.denominator / __gcd;
         numerator = numerator * static_cast<__integer>(__d) + num.numerator * static_cast<__integer>(__b);
-        denominator = (denominator / __gcd) * num.denominator;
+        denominator = (denominator / __gcd) * num.denominator;*/
+        numerator = numerator * num.denominator + num.numerator * denominator;
         ratsimp();
         return *this;
     }
 
     fractional_num& operator-=(const fractional_num& num) noexcept {
+        /*
         size_t __gcd = std::gcd(denominator, num.denominator);
         size_t __b = denominator / __gcd;
         size_t __d = num.denominator / __gcd;
         numerator = numerator * static_cast<__integer>(__d) - num.numerator * static_cast<__integer>(__b);
         denominator = (denominator / __gcd) * num.denominator;
+        */
+        numerator = numerator * num.denominator - num.numerator * denominator;
         ratsimp();
+        //ratsimp();
         return *this;
     }
 

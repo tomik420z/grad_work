@@ -6,38 +6,18 @@
 #include "adjacency_list.h"
 #include "restrictions.h"
 #include "set_linear_eq.h"
-#include <boost/multiprecision/integer.hpp>
-#include <boost/rational.hpp>
-using boost::rational;
-using boost::multiprecision::int128_t;
-
-rational<int128_t> get_frac_part(const rational<int128_t>& x) {
-    return rational<int128_t>(x.numerator() % x.denominator(), x.denominator());
-}
-
-bool check_integer(const rational<int128_t>& x) {
-    return (x.numerator() % x.denominator()) == 0;
-}
-
-rational<int128_t> floor(const rational<int128_t>& x) {
-    if (x.numerator() % x.denominator() == 0) {
-        return x;
-    } else {
-        return rational<int128_t>((x.numerator() / x.denominator()) - 1, 1);
-    }
-}
 
 /// @brief решатель
 class simplex_solver {
 public: 
-    
     using coeff_table_t = restrictions; 
     using obj_func_coeff_t = std::vector<int>;
     using vec_name_basis = std::vector<int>;    
     using vec_linear_eq = std::vector<std::variant<linear_equation<EQUAL>, linear_equation<LESS_EQ>, linear_equation<MORE_EQ>>>;
 
     static constexpr size_t absence = std::numeric_limits<int>::max(); 
-    //static constexpr double eps = 0.000001;
+    static constexpr double eps = 0.0001;
+    static constexpr double count_num = 10000;
 protected:
     size_t index_var;
     const size_t N;  // размер матрицы  
@@ -46,8 +26,8 @@ protected:
     objective_function obj_f; // целевая функция 
     coeff_table_t table;     // таблица ограничений 
     obj_func_coeff_t obj_func_coeff;   // коэффициенты целевой функции   
-    vec_name_basis vec_name; // имена базисных переменных 
-    std::vector<rational<int128_t>> vec_delta; // массив дельт  
+    vec_name_basis vec_name; // имена базисных переменных double
+    std::vector<double> vec_delta; // массив дельт  
 
     obj_func_coeff_t create_obj_func_coeff() {
         obj_func_coeff_t res(table[0].size(), 0);
@@ -59,14 +39,28 @@ protected:
         return res;
     }
     
-    void convert_line(std::vector<rational<int128_t>>& line, size_t __i, size_t __j) {
-        const rational<int128_t> frac = line[__j];
+    void convert_line(std::vector<double>& line, size_t __i, size_t __j) {
+        const double frac = line[__j];
         
         for(auto & el : line) {
             el /= frac;
+            if (double p; std::abs(std::modf(el, &p)) > 1 - eps) {
+                el = std::round(el);
+            }
+            if(std::abs(el) < eps) {
+                el = 0.0;
+            } 
         }
-        table.get_free_members()[__i] /= frac;
-        //std::cout << "table after conversuion:\n" << table << std::endl;
+
+        // свободный член 
+        auto& element = table.get_free_members()[__i];
+        element /= frac;
+        if (std::abs(element) < eps) {
+            element = 0.0;
+        } 
+        if (double p; std::abs(std::modf(element, &p)) > 1 - eps) {
+            element = std::round(element);
+        }
     }
     
     /// @brief подфункция метода гаусса  (вычитание)
@@ -75,25 +69,45 @@ protected:
     /// @param __iter итератор на соответтсвенный элемент свободного члена 
     /// @param __i индекс строки главного элемента 
     /// @param __j индекс столбца главного элемента 
-    void substract(const std::vector<rational<int128_t>>& main_line, std::vector<rational<int128_t>>& sub_line, coeff_table_t::member_iterator __iter, size_t __i, size_t __j) {
-        const rational<int128_t> factor = sub_line[__j];
+    void substract(std::vector<double>& main_line, std::vector<double>& sub_line, coeff_table_t::member_iterator __iter, size_t __i, size_t __j) {
+        const double factor = sub_line[__j];
         auto it = sub_line.begin();
-        for(const auto& el : main_line) {
-            //std::cout<< *it << "  "<< el << "  "<< factor << std::endl;
-            *it -= (el * factor);
+        for(auto& el : main_line) {
+            if (double p; std::abs(std::modf(el, &p)) > 1 - eps) {
+                el = std::round(el);
+            }
+            if (std::abs(el) > eps) {
+                *it -= (el * factor);
+            }
+            if (double p; std::abs(std::modf(*it, &p)) > 1 - eps) {
+                *it = std::round(*it);
+            }
             ++it;
         }
-        *__iter -= (table.get_free_members()[__i] * factor);
+
+        auto &element = table.get_free_members()[__i];
+        if (double p; std::abs(std::modf(element, &p)) > 1 - eps) {
+            element = std::round(element);
+        }
+        if (std::abs(element) > eps) {
+            *__iter -= (element * factor);
+        } 
+        if (double p; std::abs(std::modf(*__iter, &p)) > 1 - eps) {
+            *__iter = std::round(*__iter);
+        }
+
+
+        
     }
 
     // вычитаемая строка, индекс строки, индекс столбца  
-    void gauss_step(std::vector<rational<int128_t>>& main_line, size_t __i, size_t __j) {
+    void gauss_step(std::vector<double>& main_line, size_t __i, size_t __j) {
         convert_line(main_line, __i, __j);
-        //std::cout << "+\n";
+
         auto it = table.free_begin();
         for(auto& line : table) {
-            if (&main_line != &line && line[__j] != 0) {
-
+            // if (line[__j] != 0)
+            if ((&main_line != &line) && (std::abs(line[__j]) > eps)) {
                 substract(main_line, line, it, __i, __j);    
             }
             ++it;
@@ -142,7 +156,7 @@ protected:
         const auto& line_ref = table[i];
         
         auto __iter = std::find_if(std::begin(line_ref), std::end(line_ref), [](const auto& el){
-            return el < 0;
+            return el < 0.0;
         });
         //std::cout << std::endl;
 
@@ -152,7 +166,7 @@ protected:
         
         // иначе ищем самый большой по модулую отрицательный элемент
         for(auto it = __iter; it != line_ref.end(); ++it) {
-            if (*it < 0 && boost::abs(*it) > boost::abs(*__iter)) {
+            if (*it < 0.0 && std::abs(*it) > std::abs(*__iter)) {
                 __iter = it;
             }
         }
@@ -160,26 +174,55 @@ protected:
     }
 
     void __calc_delta() {
-        std::fill(std::begin(vec_delta), std::end(vec_delta), 0);
+        std::fill(std::begin(vec_delta), std::end(vec_delta), 0.0);
         size_t count_of_column = table[0].size();
         size_t count_of_line = table.size();
         for(size_t i = 0; i < count_of_column; ++i) {
             for(size_t j = 0; j < count_of_line; ++j) {
-                vec_delta[i] += (table[j][i] * obj_func_coeff[vec_name[j]]);  
+                if (double p; std::abs(std::modf(table[j][i], &p)) > 1 - eps) {
+                    table[j][i] = std::round(table[j][i]);
+                }
+                if (std::abs(table[j][i]) < eps) {
+                    table[j][i] = 0.0;
+                }
+                if (std::abs(table[j][i]) > eps) {
+                    vec_delta[i] += (table[j][i] * obj_func_coeff[vec_name[j]]);
+                }  
             }
             vec_delta[i] -= obj_func_coeff[i];
+            if (double p; std::abs(std::modf(vec_delta[i], &p)) > 1 - eps) {
+                vec_delta[i]  = std::round(vec_delta[i]);
+            }
+            if (std::abs(vec_delta[i]) < eps) {
+                vec_delta[i] = 0.0;
+            }
         }
         for(size_t i = 0; i < count_of_line; ++i) {
-            vec_delta.back() += table.get_free_members()[i] * obj_func_coeff[vec_name[i]];
+            auto& element = table.get_free_members()[i];
+            if (std::abs(element) < eps) {
+                element = 0.0;
+            }
+            if (double p; std::abs(std::modf(element, &p) > 1 - eps)) {
+                element = std::round(element);
+            }
+            if (std::abs(element) > eps) {
+                vec_delta.back() += element * obj_func_coeff[vec_name[i]];
+            }
         }
     }
 
     size_t find_permission_line(size_t j) {
-        size_t index = 0;
+        size_t index;
         auto& ref_free_member = table.get_free_members();
-        rational<int128_t> val = std::numeric_limits<int>::max();
+        double val = std::numeric_limits<double>::infinity();
         for(size_t i = 0; i < table.size(); ++i) {
-            rational<int128_t> ratio = table[i][j] > 0 ? ref_free_member[i] / table[i][j] : std::numeric_limits<int>::max(); 
+            if (std::abs(table[i][j]) < eps) {
+                table[i][j] = 0.0;
+            }
+            if (std::abs(ref_free_member[i]) < eps) {
+                ref_free_member[i] = 0.0;
+            }  
+            double ratio = table[i][j] > eps ? ref_free_member[i] / table[i][j] : std::numeric_limits<double>::infinity(); 
             if (ratio < val) {
                 val = ratio;
                 index = i;
@@ -192,16 +235,19 @@ protected:
     /// @return булев ответ true - решение целочисленное : false - иначе 
     bool check_for_integer() const noexcept {
         const auto& line_free = table.get_free_members();
-        size_t __count_column = x.size();
+        size_t __count_column = count_variables;
+        //std::cout << "check_for_integer ";
         for(size_t i = 0; i < line_free.size(); ++i) {
-            //std::cout << std::fixed << std::setprecision(20) << std::modf(line_free[i], NULL) << " ";
+          //  std::cout<<std::fixed<<std::setprecision(20) << line_free[i] << " ";
+            
             if(static_cast<size_t>(vec_name[i]) < __count_column) {
-                if (!check_integer(line_free[i])) { // решение не целочисленное 
+                if (double integer_part, frac_part = std::modf(line_free[i], &integer_part); std::abs(frac_part) > eps) { // решение не целочисленное 
+            //        std::cout << std::endl;
                     return false;
                 }
             } 
         } 
-
+        std::cout << std::endl;
         return true;
     }
     /*
@@ -221,12 +267,12 @@ protected:
     size_t find_max_fractional() const noexcept {
         const auto& line_free = table.get_free_members();
         size_t max_index = table.size();
-        rational<int128_t> max_val = std::numeric_limits<int>::min();
+        double max_val = -std::numeric_limits<double>::infinity();
         for(size_t i = 0; i < line_free.size(); ++i) {
             // проверяем дробную часть
             
-            if (rational<int128_t> frac = get_frac_part(line_free[i]); 
-                                max_val < frac && static_cast<size_t>(vec_name[i]) < count_variables) {
+            if (double integ, frac = std::modf(line_free[i], &integ); 
+                                (max_val < frac) && (static_cast<size_t>(vec_name[i]) < count_variables)) {
                 max_val = frac;
                 max_index = i;
             }
@@ -235,14 +281,14 @@ protected:
     }
 
     // ГОМОРИ метод 
-    // ищем минимальное отношение 
+    /*
     size_t find_premmision_column(size_t i) {
         const auto& last_line = table[i];
-        rational<int128_t> min_val = std::numeric_limits<int>::max();
+        double min_val = std::numeric_limits<int>::max();
         size_t index_res = 0;
         for(size_t i = 0; i < last_line.size(); ++i) {
-            if (last_line[i] != 0) {
-                if (rational<int128_t> del = vec_delta[i] / last_line[i]; del < min_val) {
+            if (!last_line[i] < 0.0) {
+                if (double del = vec_delta[i] / last_line[i]; del < min_val) {
                     min_val = del;
                     index_res = i;
                 }
@@ -250,20 +296,7 @@ protected:
         }
         return index_res;
     }
-
-
-    bool check_test() {
-        const auto& vec_line = table.get_free_members();
-        for(size_t i = 0; i < vec_line.size(); ++i) {
-            if(static_cast<size_t>(vec_name[i]) < count_variables) {
-                if (vec_line[i] < 0) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
+*/
 
 
 public:
@@ -310,12 +343,13 @@ public:
     }
 
     void solve() {
+        
         __fill_basis_coeff();
-        while(true) {
+    while(true) {
         for(size_t i = table.find_max_b();  i < table.size(); i = table.find_max_b()) {
             size_t j = __find_max_abs_el(i);
             if (j >= table[i].size()) {
-                break;
+                throw "__system no solution\n";
             }
 
             vec_name[i] = j;
@@ -325,11 +359,8 @@ public:
 
         __calc_delta();
 
-
         for (auto iter = f_max(); true; iter = f_max()) {
-            //std::cout << *iter<< std::endl;
-            //std::cout << *iter << std::endl;
-            if (*iter <= 0) {
+            if (*iter <= eps) {
                 break;
             }
             size_t j = std::distance(vec_delta.begin(), iter);
@@ -337,91 +368,50 @@ public:
             size_t i = find_permission_line(j);
             //std::cout << i << " " << j << std::endl;
             vec_name[i] = j;
-        // std::cout << i << " " << j << std::endl; 
+            // std::cout << i << " " << j << std::endl; 
             gauss_step(table[i], i, j);
             __calc_delta();
             //round_vec_free_members();
         } 
-
-    
-            if (check_for_integer()) {
-                std::cout << "solution is integer!!!\n";
-                return; //решение целочисленное     
-            }
-            
-            
-         
-                std::cout << "solution is not int\n";
-                const size_t index_max_frac = find_max_fractional();
-
-                std::vector<rational<int128_t>> integer_restriction; //ограничение для целочисленности
-                integer_restriction.resize(table[0].size());
-
-                // составление и добавление нового ограничения 
-                std::transform(std::cbegin(table[index_max_frac]), std::cend(table[index_max_frac]), std::begin(integer_restriction), [](const auto& val){
-                    if (!check_integer(val)) { // если число дробное  
-                        if(val < 0) {
-                            return val - floor(val);
-                        } else {
-                            return -get_frac_part(val);
-                        }
-                    }
-                    return rational<int128_t>{0};
-                });
-
-                rational<int128_t> b = -get_frac_part(table.get_free_members()[index_max_frac]);
-                
-                table.add_new_restriction_less(std::move(integer_restriction), b);
-                vec_name.push_back(index_var++);
-                vec_delta.push_back(0);
-                std::swap(vec_delta.back(), vec_delta[vec_delta.size() - 2]);
-                obj_func_coeff.push_back(0);
+        /*print_delta();
+        const auto& line = table.get_free_members();
+        std::cout << "free: ";
+        for(const auto& el : line) {
+            std::cout << el << " ";
         }
-                //__calc_delta();
-                /*
-                std::for_each(std::begin(vec_delta), std::end(vec_delta), [](auto &el){
-                    el = -el;
-                });
-            
-                for(size_t i = table.find_max_b();  i < table.size(); i = table.find_max_b()) {
-                    size_t j = find_premmision_column(i);
-                    std::cout << i << " " << j << std::endl;
-                    if (j >= table[i].size()) {
-                        throw "error";
+        std::cout << std::endl;
+        */
+        if (check_for_integer()) {
+            std::cout << "solution is integer!!!\n";
+            break; //решение целочисленное     
+        } else {
+            std::cout << "solution is not integer\n"; 
+            //break;
+        }
+        
+            const size_t index_max_frac = find_max_fractional();
+            std::vector<double> integer_restriction; //ограничение для целочисленности
+            integer_restriction.resize(table[0].size());
+        
+            std::transform(std::cbegin(table[index_max_frac]), std::cend(table[index_max_frac]), std::begin(integer_restriction), [](const auto& val){
+                if (double p, frac = std::modf(val, &p); std::abs(frac) > eps) { // если число дробное  
+                    if(val < 0.0) {
+                        return -(val - std::floor(val));
+                    } else {
+                        return -frac;
                     }
-
-                    vec_name[i] = j;
-                    gauss_step(table[i], i, j);
-                    //round_vec_free_members();
                 }
+                return 0.0;
+            });
 
-                __calc_delta();
-                std::for_each(std::begin(vec_delta), std::end(vec_delta), [](auto &el){
-                    el = -el;
-                });
+            double p, b = -std::modf(table.get_free_members()[index_max_frac], &p);
+            
+            table.add_new_restriction_less(std::move(integer_restriction), b);
+            vec_name.push_back(index_var++);
+            vec_delta.push_back(0);
+            //std::swap(vec_delta.back(), vec_delta[vec_delta.size() - 2]);
+            obj_func_coeff.push_back(0);
 
-/*
-                for (auto iter = f_max(); true; iter = f_max()) {
-                    std::cout << *iter << std::endl;
-                    if (*iter <= 0) {
-                        break;
-                    }
-                    size_t j = std::distance(vec_delta.begin(), iter);
-                    // найти разрешающую строку
-                    size_t i = find_permission_line(j);
-                    //std::cout << i << " " << j << std::endl;
-                    vec_name[i] = j;
-                // std::cout << i << " " << j << std::endl; 
-                    gauss_step(table[i], i, j);
-                    __calc_delta();
-                    //round_vec_free_members();
-               } 
-*/
-                //size_t j = find_premmision_column();
-                //vec_name[index_max_frac] = j;
-                //gauss_step(table.back(), table.size() - 1, j);
-                
-          //  } while(!check_for_integer());
 
             /*
             __calc_delta();
@@ -445,7 +435,6 @@ public:
             }
             print_delta();
             */
-           //std::cout << std::boolalpha << check_for_integer() << std::endl;
         }
     
 
@@ -470,7 +459,7 @@ public:
            // break;
         //}
     */        
-        
+        std::cout << std::boolalpha << check_for_integer() << std::endl;
     
             //std::cout << "------------------------------------------------\n";
             //const auto& line = table.get_free_members();
@@ -484,7 +473,7 @@ public:
 
         //print_vec_name();
         //print_delta();
-
+    }
 
     
 
@@ -509,7 +498,7 @@ public:
         path.reserve(N); 
         const auto& free_line = table.get_free_members();
         for(size_t i = 0; i < vec_name.size(); ++i) {
-            if (free_line[i] > 0 && (vec_name[i] < static_cast<int>(count_variables))) {
+            if (std::abs(free_line[i]) > eps && (vec_name[i] < static_cast<int>(count_variables))) {
                 path.emplace_back(x.get_coord(vec_name[i]));
             }
         }
@@ -709,4 +698,5 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+
 
