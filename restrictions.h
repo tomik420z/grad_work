@@ -282,4 +282,3 @@ std::ostream& operator<<(std::ostream&os, const restrictions& restr) {
 
 
 #endif
-

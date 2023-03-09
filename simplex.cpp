@@ -9,78 +9,9 @@
 #include <boost/multiprecision/integer.hpp>
 #include <boost/rational.hpp>
 #include <unordered_set>
+#include "parallel_algorithm.h"
+#include "gauss_step.h"
 using boost::rational;
-//using boost::multiprecision::int64_t;
-
-template<typename Container_from, typename Unary_func>
-Unary_func parallel_for_each(Container_from& container, Unary_func __pred) {
-
-    const size_t sz = container.size();
-
-    #pragma omp parallel for //num_threads()
-    for(size_t i = 0; i < sz; ++i) {
-        __pred(container[i]);
-    }
-
-    return __pred;
-}
-
-template<typename Iter, typename Unary_func>
-Unary_func parallel_for_each(Iter __first, Iter __last, Unary_func __pred) {
-    static_assert(std::is_base_of_v<std::random_access_iterator_tag, typename std::iterator_traits<Iter>::iterator_category>, "iterator must be random access");    
-
-    #pragma omp parallel for 
-    for(Iter __curr = __first; __curr < __last; ++__curr) {
-        __pred(*__curr);
-       
-    }
-    return __pred;
-}
-
-template<typename Container_from, typename Container_to, typename Unary_func>
-Unary_func parallel_accumulate(const Container_from& container_from,  Container_to& container_to, Unary_func __pred) {
-
-    const size_t sz = container_from.size();
-
-    #pragma omp parallel for //num_threads()
-    for(size_t i = 0; i < sz; ++i) {
-        container_to[i] += __pred(container_from[i]);
-    }
-
-    return __pred;
-}
-
-template<typename Container_from, typename Container_to, typename Unary_func>
-Unary_func parallel_transform(const Container_from& container_from,  Container_to& container_to, Unary_func __pred) {
-
-    const size_t sz = container_from.size();
-
-    #pragma omp parallel for //num_threads()
-    for(size_t i = 0; i < sz; ++i) {
-        container_to[i] = __pred(container_from[i]);
-    }
-
-    return __pred;
-}
-
-template<class Iter>
-Iter parallel_max_element(Iter first, Iter last)
-{
-    static_assert(std::is_base_of_v<std::random_access_iterator_tag, typename std::iterator_traits<Iter>::iterator_category>, "iterator must be random access");    
-    
-    Iter largest = first;
-    ++first;
-    #pragma omp declare reduction(parallel_max_element: Iter: omp_out = *omp_out > *omp_in ? omp_out : omp_in) initializer (omp_priv=(omp_orig))
-
-    #pragma omp parallel for reduction(parallel_max_element: largest)
-    for (Iter curr = first; curr < last; ++curr) {
-        largest = (*largest < *curr) ? curr : largest;
-    }
-    return largest;
-}
-
-
-
 
 rational<int64_t> get_frac_part(const rational<int64_t>& x) {
     return rational<int64_t>(x.numerator() % x.denominator(), x.denominator());
@@ -98,17 +29,16 @@ rational<int64_t> floor(const rational<int64_t>& x) {
     }
 }
 
-/// @brief решатель
-class simplex_solver {
+/// @brief решатель для задачи линейного целочисленного программирования
+class gomory_solver {
 public: 
-    
+
     using coeff_table_t = restrictions; 
     using obj_func_coeff_t = std::vector<int>;
     using vec_name_basis = std::vector<int>;    
     using vec_linear_eq = std::vector<std::variant<linear_equation<EQUAL>, linear_equation<LESS_EQ>, linear_equation<MORE_EQ>>>;
 
     static constexpr size_t absence = std::numeric_limits<int>::max(); 
-    //static constexpr double eps = 0.000001;
 protected:
     size_t index_var;
     const size_t N;  // размер матрицы  
@@ -130,53 +60,7 @@ protected:
         return res;
     }
     
-    void convert_line(std::vector<rational<int64_t>>& line, size_t __i, size_t __j) {
-        const rational<int64_t> frac = line[__j];
-        parallel_for_each(std::begin(line), std::end(line), [&frac](auto&el) {
-            el /= frac;
-        });
-        /*for(auto & el : line) {
-            el /= frac;
-        }*/
-        table.get_free_members()[__i] /= frac;
-        //std::cout << "table after conversuion:\n" << table << std::endl;
-    }
     
-    /// @brief подфункция метода гаусса  (вычитание)
-    /// @param main_line вычитаемая строка 
-    /// @param sub_line уменьшаемая строка  
-    /// @param __iter итератор на соответтсвенный элемент свободного члена 
-    /// @param __i индекс строки главного элемента 
-    /// @param __j индекс столбца главного элемента 
-    void substract(const std::vector<rational<int64_t>>& main_line, std::vector<rational<int64_t>>& sub_line, coeff_table_t::member_iterator __iter, size_t __i, size_t __j) {
-        const rational<int64_t> factor = sub_line[__j];
-        parallel_accumulate(main_line, sub_line, [&factor](const auto& el){
-            return - el * factor;
-        });
-        /*
-        auto it = sub_line.begin();
-        for(const auto& el : main_line) {
-            //std::cout<< *it << "  "<< el << "  "<< factor << std::endl;
-            *it -= (el * factor);
-            ++it;
-        }*/
-        *__iter -= (table.get_free_members()[__i] * factor);
-    }
-
-    // вычитаемая строка, индекс строки, индекс столбца  
-    void gauss_step(std::vector<rational<int64_t>>& main_line, size_t __i, size_t __j) {
-        convert_line(main_line, __i, __j);
-        //std::cout << "+\n";
-        auto it = table.free_begin();
-        for(auto& line : table) {
-            if (&main_line != &line && line[__j] != 0) {
-                substract(main_line, line, it, __i, __j);    
-            }
-            ++it;
-        }
-    }
-    
-
     /// @brief инициализатор вектора базисных переменных 
     /// @return вектор базисных переменных 
     vec_name_basis create_name() {
@@ -193,34 +77,20 @@ protected:
         return res;
     }
     
+    /// @brief заполнить сотлбец базисных переменных
     void __fill_basis_coeff() {
         for(size_t i = 0; i < N; ++i) {
             vec_name[i] = i;
-            gauss_step(table[i], i, i);
-        }
-      /*  
-        for(size_t i = N; i < table.size(); ++i) {
-            if (vec_name[i] == absence) {
-                auto jt = std::find_if(std::begin(table[i]), std::end(table[i]), [](const auto & el){
-                    return std::abs(el) > eps;
-                });
-                if (jt == table[i].end()) {
-                    throw "system error";
-                }
-                gauss_step(table[i], i, std::distance(table[i].begin(), jt));
-            }
-        }
-        */
+            gauss_step<coeff_table_t>::step(table, table[i], i, i);
+        }  
     }
 
     size_t __find_max_abs_el(size_t i) {
 
         const auto& line_ref = table[i];
-        
-        auto __iter = std::find_if(std::begin(line_ref), std::end(line_ref), [](const auto& el){
+        auto __iter = std::find_if(std::cbegin(line_ref), std::cend(line_ref), [](const auto& el){
             return el < 0;
         });
-        //std::cout << std::endl;
 
         if (__iter == line_ref.end()) {
             throw "the system has no solutions";
@@ -263,17 +133,13 @@ protected:
         rational<int64_t> val = std::numeric_limits<int64_t>::max();
         const size_t count_elem = table.size();
         
-        //#pragma omp parallel for private(ratio)
+        //#pragma omp for reduction() 
         for(size_t i = 0; i < count_elem; ++i) {
-            rational<int64_t> ratio = table[i][j] > 0 ? ref_free_member[i] / table[i][j] : std::numeric_limits<int64_t>::max(); 
-           // #pragma omp critical
-               
+            rational<int64_t> ratio = table[i][j] > 0 ? ref_free_member[i] / table[i][j] : std::numeric_limits<int64_t>::max();   
             if (ratio < val) {
                 val = ratio;
                 index = i;
             }
-        
-
         }
         return index;
     }
@@ -296,18 +162,7 @@ protected:
 
         return true;
     }
-    /*
-    void round_vec_free_members() {
-        auto& line = table.get_free_members();
-        std::for_each(std::begin(line), std::end(line), [](auto& el) {
-            if (double frac = std::modf(el, NULL); std::abs(frac) > 0.99) {
-                el = std::round(el);
-            } else if (std::abs(el) < eps) {
-                el = 0.0;
-            }
-        });
-    }
-    */
+    
     /// @brief найти число, имеющее наибольшую дробную часть
     /// @return индекс строки 
     size_t find_max_fractional() const noexcept {
@@ -362,7 +217,7 @@ protected:
 
 public:
     // initialization 
-    simplex_solver(const matrix_dist& mx, const bool_variables&x, const set_linear_eq& lin_eq) : N(mx.size()), x(x), index_var(x.size()), count_variables(x.size()), obj_f(mx, x), 
+    gomory_solver(const matrix_dist& mx, const bool_variables&x, const set_linear_eq& lin_eq) : N(mx.size()), x(x), index_var(x.size()), count_variables(x.size()), obj_f(mx, x), 
                                             table(lin_eq, count_variables, mx.size() - 1),
                                             obj_func_coeff(create_obj_func_coeff()),
                                             vec_name(create_name()),
@@ -371,22 +226,7 @@ public:
 
 
     decltype(auto) f_max() {
-        //auto back = vec_delta.end();
-        //std::advance(back, -1);
-        //return std::distance(std::begin(vec_delta), parallel_max_element(std::begin(vec_delta), back));
-        rational<int64_t> max_val = vec_delta.front();
-        size_t index = 0; 
-        const size_t sz = vec_delta.size() - 1;
-        for(size_t i = 0; i < sz; ++i) {
-            
-            if (max_val < vec_delta[i]) {
-                max_val = vec_delta[i];
-                index = i;
-            }
-        }
-        return index;
-        
-        //return std::max_element(std::begin(vec_delta), std::end(vec_delta) - 1);
+        return std::distance(std::begin(vec_delta), parallel_max_element(std::begin(vec_delta), std::end(vec_delta) - 1));
     }
 
     void print_vec_name() {
@@ -417,24 +257,24 @@ public:
         }
         std::cout << '\n';
     }
-
+    
     void solve() {
+
+        
         __fill_basis_coeff();
 
         // добавить новое ограничение не меняя матрицу 
         for(size_t i = table.find_max_b();  i < table.size(); i = table.find_max_b()) {
             size_t j = __find_max_abs_el(i);
-            if (j >= table[i].size()) {
-                break;
-            }
 
             vec_name[i] = j;
-            gauss_step(table[i], i, j);
+            gauss_step<coeff_table_t>::step(table, table[i], i, j);
+            //__gauss_step(table[i], i, j);
             //round_vec_free_members();
         }
 
         __calc_delta();
-
+        
         while (true) {
             for (auto j = f_max(); true; j = f_max()) {
                 //std::cout << *iter<< std::endl;
@@ -445,65 +285,64 @@ public:
                 
                 size_t i = find_permission_line(j);
                 vec_name[i] = j;
-                gauss_step(table[i], i, j);
+                gauss_step<coeff_table_t>::step(table, table[i], i, j);
+                //__gauss_step(table[i], i, j);
                 __calc_delta();
-             
+        
             } 
 
 
-                //std::cout << std::boolalpha << check_test() << std::endl;
-            
                     
-                    //std::cout << "test = "<< check_test() << std::endl;
-                    if (check_for_integer()) {
-                        std::cout << "solution is integer!!!\n";
-                        return; //решение целочисленное     
-                    }
+                if (check_for_integer()) {
+                    std::cout << "solution is integer!!!\n";
+                    return; //решение целочисленное     
+                }
                     
                     
                 
-                    std::cout << "solution is not int\n";
-                    const size_t index_max_frac = find_max_fractional();
+                std::cout << "solution is not int\n";
+                const size_t index_max_frac = find_max_fractional();
 
-                    std::vector<rational<int64_t>> integer_restriction; //ограничение для целочисленности
-                    integer_restriction.resize(table[0].size());
+                std::vector<rational<int64_t>> integer_restriction; //ограничение для целочисленности
+                integer_restriction.resize(table[0].size());
 
                     // составление и добавление нового ограничения 
-                    parallel_transform(table[index_max_frac], integer_restriction, [](const auto& val){
-                        if (!check_integer(val)) { // если число дробное  
-                            if(val < 0) {
-                                return -(val - floor(val));
-                            } else {
-                                return -get_frac_part(val);
-                            }
+                parallel_transform(table[index_max_frac], integer_restriction, [](const auto& val){
+                    if (!check_integer(val)) { // если число дробное  
+                        if(val < 0) {
+                            return -(val - floor(val));
                         } else {
-                            return rational<int64_t>{0};
+                            return -get_frac_part(val);
                         }
-                    });
-                    
-                    rational<int64_t> b = -get_frac_part(table.get_free_members()[index_max_frac]);
-                
-                    table.add_new_restriction_less(std::move(integer_restriction), b);
-                    vec_name.push_back(index_var++);
-                    vec_delta.push_back(0);
-                    
-                    obj_func_coeff.push_back(0);
-
-                    __calc_delta();
-                    
-                    for(size_t i = table.find_max_b();  i < table.size(); i = table.find_max_b()) {
-                        size_t j = find_premmision_column(i);
-                        
-                        vec_name[i] = j;
-                        gauss_step(table[i], i, j);
-                        __calc_delta();
+                    } else {
+                        return rational<int64_t>{0};
                     }
+                });
+                    
+                rational<int64_t> b = -get_frac_part(table.get_free_members()[index_max_frac]);
+                
+                table.add_new_restriction_less(std::move(integer_restriction), b);
+                vec_name.push_back(index_var++);
+                vec_delta.push_back(0);
+                    
+                obj_func_coeff.push_back(0);
+
+                __calc_delta();
+                    
+                for(size_t i = table.find_max_b();  i < table.size(); i = table.find_max_b()) {
+                    size_t j = find_premmision_column(i);
+                    
+                    vec_name[i] = j;
+                    gauss_step<coeff_table_t>::step(table, table[i], i, j);
+                    //__gauss_step(table[i], i, j);
+                    __calc_delta();
                 }
         }
+    }
     
 
        
-    
+    /*
     void add_solve(restrictions & table_add) {
         __fill_basis_coeff();
 
@@ -515,7 +354,8 @@ public:
                 }
 
                 vec_name[i] = j;
-                gauss_step(table_add[i], i, j);
+                //gauss_step<coeff_table_t>::step(table, table_add[i], j);
+                __gauss_step(table_add[i], i, j);
                 //round_vec_free_members();
             }
 
@@ -536,7 +376,7 @@ public:
                 //std::cout << i << " " << j << std::endl;
                 vec_name[i] = j;
             // std::cout << i << " " << j << std::endl; 
-                gauss_step(table_add[i], i, j);
+                __gauss_step(table_add[i], i, j);
                 __calc_delta();
                 //round_vec_free_members();
             } 
@@ -644,7 +484,7 @@ public:
             print_delta();
             */
            //std::cout << std::boolalpha << check_for_integer() << std::endl;
-        }
+        //}
 
     void print() const noexcept {   
         auto it = table.free_begin();
@@ -662,7 +502,7 @@ public:
 
     restrictions& get_table() noexcept { return table; }
 
-    ~simplex_solver() {}
+    ~gomory_solver() {}
 
     std::vector<std::pair<size_t, size_t>> get_path() const {
         std::vector<std::pair<size_t, size_t>> path;
@@ -775,7 +615,7 @@ std::pair<size_t, std::vector<std::pair<size_t, size_t>>> lin_alg(const matrix_d
     size_t i = 0;
     try {
     do {
-        simplex_solver simp_s(mx, x, lin_eq);
+        gomory_solver simp_s(mx, x, lin_eq);
         simp_s.solve();
 
         

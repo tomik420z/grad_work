@@ -8,8 +8,8 @@
             "args": [
                 "-g",
                 "-fopenmp",
-                //"-Ofast",
-                "-O3",
+                "-Ofast",
+                //"-O3",
                 "-std=c++17",
                 //"-lpthread",
             
@@ -37,8 +37,8 @@
                 "-Werror",
                 
                 "-fopenmp",
-                //"-Ofast",
-                "-O3",
+                "-Ofast",
+                //"-O3",
                 "${file}",
                 "-o",
                 "${fileDirname}\\${fileBasenameNoExtension}.exe",

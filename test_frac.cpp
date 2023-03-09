@@ -1,15 +1,25 @@
 #include <iostream>
 #include <cmath>
 #include <iomanip>
-//#include "fractional_num.h"
-//#include "restrictions.h"
-static constexpr double eps = 0.0001;
-int main() {
-    
-    double x = 2.99999;
+#include "parallel_algorithm.h"
+#include <random>
+#include <ctime>
+#include <vector>
+#include <algorithm>
 
-    x = std::round(x / 0.0025) * 0.0025;
-    //bool z = std::modf(x, &p) < eps;
-    std::cout << std::setprecision(20) << x << std::endl;
+
+int main() {
+    std::vector<int> v;
+    std::srand(time(NULL));
+    v.reserve(100'000'000);
+    for(size_t i = 0; i < 1'000'000'000; ++i) {
+        v.push_back(std::rand());
+    }
+    std::clock_t t1 = clock();
+    auto it = std::max_element(std::begin(v), std::end(v));
+    std::clock_t t2 = clock();
+    auto jt = parallel_max_element(std::begin(v), std::end(v));
+    std::clock_t t3 = clock();
+    std::cout  <<(*it == *jt) << " "<< t2 - t1 << " " << t3 - t2 << std::endl;
     return 0;
 }
