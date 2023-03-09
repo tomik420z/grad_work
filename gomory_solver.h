@@ -1,3 +1,8 @@
+#pragma once
+#ifndef GOMORY_SOLVER_H
+#define GOMORY_SOLVER_H
+
+
 #include <iostream>
 #include <vector>
 #include <numeric>
@@ -40,7 +45,7 @@ public:
 
     static constexpr size_t absence = std::numeric_limits<int>::max(); 
 protected:
-    size_t index_var;
+    size_t index_var; //индекс новой переменной 
     const size_t N;  // размер матрицы  
     const bool_variables& x; // множество переменных 
     const size_t count_variables; // кол-во главных переменных
@@ -50,6 +55,8 @@ protected:
     vec_name_basis vec_name; // имена базисных переменных 
     std::vector<rational<int64_t>> vec_delta; // массив дельт  
 
+    /// @brief инициализатор для вектора коэффициентов целевой функции 
+    /// @return вектор коэф. целевой функции
     obj_func_coeff_t create_obj_func_coeff() {
         obj_func_coeff_t res(table[0].size(), 0);
         auto it = res.begin();
@@ -109,7 +116,7 @@ protected:
         parallel_for_each(vec_delta, [](auto& el){
             el = 0;
         });
-        //std::fill(std::begin(vec_delta), std::end(vec_delta), 0);
+        
         const size_t count_of_column = table[0].size();
         const size_t count_of_line = table.size();
         #pragma omp parallel for 
@@ -226,7 +233,7 @@ protected:
         }
     }
 
-    size_t f_max() {
+    size_t f_max() const noexcept {
         return std::distance(std::begin(vec_delta), parallel_max_element(std::begin(vec_delta), std::end(vec_delta) - 1));
     }
 
@@ -291,7 +298,6 @@ public:
     
     void solve() {
 
-        
         __fill_basis_coeff();
 
         // привести таблицу к каноническому виду(для решения симплекс методом)
@@ -348,9 +354,6 @@ public:
             }
         }
     }
-    
-
-       
     
     void add_solve() {
 
@@ -463,232 +466,8 @@ public:
 };
 
 
-linear_equation<MORE_EQ> get_new_restriction(const std::vector<std::list<size_t>> &__set, std::vector<std::list<size_t>>::const_iterator jt) {
-    
-    const auto& list_vertex = *jt;//__set[index];
-    linear_equation<MORE_EQ>::index_variables ind_var;
-    for(const auto& el_set : list_vertex) {
-        for(auto it = __set.begin(); it != __set.end(); ++it) {
-            if (it == jt) {
-                continue;
-            } 
-
-            for(const auto& el : *it) {
-                if (el_set < el) {
-                    ind_var.emplace_back(el_set, el);
-                } else {
-                    ind_var.emplace_back(el, el_set);
-                }
-            }
-        }
-    }
-    return linear_equation<MORE_EQ>(std::move(ind_var), 2);
-}
-
-std::vector<linear_equation<MORE_EQ>> get_additional_restrictions(const std::vector<std::list<size_t>> &__set) {
-    std::vector<linear_equation<MORE_EQ>> vec_lin;
-    vec_lin.reserve(__set.size());  
-    for(auto it = __set.cbegin(); it != __set.cend(); ++it) {
-        vec_lin.emplace_back(get_new_restriction(__set, it));
-    }
-    return vec_lin;
-}
 
 
 
 
-/// @brief задать начальные ограничения (инициализатор для объекта ограничения)
-/// @return объект ограничения 
-set_linear_eq get_base_equals(size_t N) {
-    set_linear_eq set;
-   // set.reserve(2 * N);
-    for(size_t i = 0; i < N; ++i) {
-        std::vector<std::pair<size_t, size_t>> __vec_index;
-        __vec_index.reserve(N - 1);
-        for(size_t j = 0; j < N; ++j) {
-            if (i != j) {
-                size_t p = (i < j) ? i * N + j : j * N + i;
-                __vec_index.emplace_back(p / N, p % N);
-            }
-        }
-        // == 2 
-        set.add_new_restriction(linear_equation<EQUAL>(std::move(__vec_index), 2));
-    }  
-    
-    for(size_t i = 0; i < N; ++i) {
-        for(size_t j = i + 1; j < N; ++j) {
-            set.add_new_restriction(linear_equation<LESS_EQ>({std::pair{i, j}}, 1));
-        }
-    }
-
-    return set;
-}
-
-void print_path(const std::vector<std::pair<size_t, size_t>>& vec_res) {
-    std::cout << "path = ";
-    for(const auto & [__i, __j] : vec_res) {
-        std::cout << '(' << __i << ", " << __j << ')';
-    }
-    std::cout << std::endl;
-}
-
-void print_component(const std::vector<std::list<size_t>>& component) {
-    for(const auto& li : component) {
-        std::cout << "{ ";
-        for(const auto& vertex : li) {
-            std::cout << vertex << " ";
-        }
-        std::cout << "}";
-    }
-    std::cout << std::endl;
-}
-
-std::pair<size_t, std::vector<std::pair<size_t, size_t>>> lin_alg(const matrix_dist& mx) {
-    std::pair<size_t, std::vector<std::pair<size_t, size_t>>> res;
-    size_t N = mx.size();
-    bool_variables x(N);
-    set_linear_eq lin_eq = get_base_equals(N);
-
-    size_t i = 0;
-    gomory_solver simp_s(mx, x, lin_eq);
-    try {
-    while(true) {
-        if (i == 0) {
-            
-            simp_s.solve();
-        
-            const auto vec_coord = simp_s.get_path();
-        
-            size_t cost = simp_s.get_cost(mx, vec_coord);
-            adjacency_list adj_li(vec_coord, N);
-        
-            const auto component = graph_component(adj_li);
-            print_component(component);
-            if (component.size() == 1) {
-                std::cout << "succ\n";
-                res.first = cost;
-                res.second = std::move(vec_coord); 
-                break;
-            } 
-         
-            res.first = cost;
-            res.second = std::move(vec_coord); 
-
-
-            auto vec_line_rest = get_additional_restrictions(component);
-            simp_s.add_new_restrictions(vec_line_rest);
-            /*auto ref_table = simp_s.get_table();
-            
-            for(auto& line : vec_line_rest) {
-                ref_table.add_new_restricton(line);
-            }*/
-            /*
-            for(auto& line : vec_line_rest) {
-                if (!line.empty()) { 
-                    lin_eq.add_new_restriction(std::move(line));
-                }
-            }*/
-        //} 
-        
-            print_path(res.second);
-            //std::cout << lin_eq << std::endl;
-            if (vec_coord.size() != N) {
-                std::cout << "over\n";
-                break;
-            }
-        
-            ++i;
-        } else {
-            simp_s.add_solve();
-            const auto vec_coord = simp_s.get_path();
-        
-            size_t cost = simp_s.get_cost(mx, vec_coord);
-            adjacency_list adj_li(vec_coord, N);
-        
-            const auto component = graph_component(adj_li);
-            print_component(component);
-            if (component.size() == 1) {
-                std::cout << "succ\n";
-                res.first = cost;
-                res.second = std::move(vec_coord); 
-                break;
-            } 
-         
-            res.first = cost;
-            res.second = std::move(vec_coord); 
-
-
-        //auto vec_line_rest = get_additional_restrictions(component);
-        /*if (component.size() == 2) {
-            auto line = get_new_restriction(component, component.begin());
-            if (!line.empty()) { 
-                    lin_eq.add_new_restriction(std::move(line));
-            }*/
-        //} else {
-
-            
-            auto vec_line_rest = get_additional_restrictions(component);
-            simp_s.add_new_restrictions(vec_line_rest);
-            /*
-            for(auto& line : vec_line_rest) {
-                if (!line.empty()) { 
-                    lin_eq.add_new_restriction(std::move(line));
-                }
-            }*/
-        //} 
-        
-            print_path(res.second);
-            //std::cout << lin_eq << std::endl;
-            if (vec_coord.size() != N) {
-                std::cout << "over\n";
-                break;
-            }
-
-            //std::cout << ref_table << std::endl;
-        
-            ++i;
-        }
-    }
-    } catch(const char * e) {
-        std::cout << e << std::endl;
-    }
-    print_path(res.second);
-    std::cout << res.first << std::endl;
-    
-    return res;
-} 
-
-
-int main(int argc, char* argv[]) {
-    matrix_dist mx(argv[1]);
-    lin_alg(mx);
-    /*std::vector<std::pair<size_t, size_t>> vec = {
-        std::pair{2,5}, std::pair{3,4}, std::pair{1,4}, std::pair{0,5}, std::pair{1,3}, std::pair{0,2}
-    };
-    adjacency_list adj(vec, 6);
-    adj.print();
-    auto vec_component = graph_component(adj);
-
-    for(const auto& li : vec_component) {
-        std::cout << "{ ";
-        for(const auto& v : li) {
-            std::cout << v << " ";
-        }
-        std::cout << " }" << std::endl;
-    }
-    std::cout << get_new_restriction(vec_component);
-    */
-   /*
-    simplex_solver ss(mx);
-    ss.solve();
-    std::cout << ss.get_cost() << std::endl;
-    auto vec = ss.get_path();
-    for(const auto& [i, j] : vec) {
-        std::cout << "("<< i << "," << j << ")" << " "; 
-    }
-    std::cout << std::endl;
-    //ss.print();
-    */
-
-    return 0;
-}
+#endif
