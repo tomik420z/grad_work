@@ -56,8 +56,7 @@ Unary_func parallel_transform(const Container_from& container_from,  Container_t
 }
 
 template<class Iter>
-Iter parallel_max_element(Iter first, Iter last)
-{
+Iter parallel_max_element(Iter first, Iter last) {
     static_assert(std::is_base_of_v<std::random_access_iterator_tag, typename std::iterator_traits<Iter>::iterator_category>, "iterator must be random access");    
     
     Iter largest = first;

@@ -102,7 +102,9 @@
         "cinttypes": "cpp",
         "execution": "cpp",
         "__tree": "cpp",
-        "__split_buffer": "cpp"
+        "__split_buffer": "cpp",
+        "__hash_table": "cpp",
+        "__config": "cpp"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }

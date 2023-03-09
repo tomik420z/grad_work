@@ -185,6 +185,18 @@ public:
         }
     }
 
+    void delete_back(size_t count_deletes) {
+        for(size_t i =  __count_line - count_deletes; i < __count_line; ++i) {
+            linear_system[i].erase(linear_system[i].end() - count_deletes, linear_system[i].end());
+        } 
+
+        linear_system.erase(linear_system.end() - count_deletes, linear_system.end());
+        vec_free_mem.erase(vec_free_mem.end() - count_deletes, vec_free_mem.end());
+        __count_line -= count_deletes;
+        __count_column -= count_deletes;
+        index_addtional_variables -= count_deletes;
+    }
+
     type_eq get_type(size_t i) const {
         return vec_ratio[i];
     }
