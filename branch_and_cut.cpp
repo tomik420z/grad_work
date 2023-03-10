@@ -44,7 +44,6 @@ protected:
     /// @return объект ограничения 
     set_linear_eq get_base_equals(size_t N) {
         set_linear_eq set;
-    // set.reserve(2 * N);
         for(size_t i = 0; i < N; ++i) {
             std::vector<std::pair<size_t, size_t>> __vec_index;
             __vec_index.reserve(N - 1);
@@ -54,7 +53,7 @@ protected:
                     __vec_index.emplace_back(p / N, p % N);
                 }
             }
-            // == 2 
+            //Условие кратности: каждая вершина должна иметь одно входное и одно выходное ребро маршрута.
             set.add_new_restriction(linear_equation<EQUAL>(std::move(__vec_index), 2));
         }  
         
@@ -122,9 +121,8 @@ public:
 
         auto vec_line_rest = get_additional_restrictions(component);
         simp_s.add_new_restrictions(vec_line_rest);
-    
         print_path(res.second);
-        //std::cout << lin_eq << std::endl;
+
         if (vec_coord.size() != N) {
             std::cout << "over\n";
             return res;
@@ -163,8 +161,7 @@ public:
         } catch(const char * e) {
             std::cout << e << std::endl;
         }
-        print_path(res.second);
-        std::cout << res.first << std::endl;
+        
         
         return res;
     } 
@@ -177,6 +174,12 @@ public:
 int main(int argc, char* argv[]) {
     matrix_dist mx(argv[1]);
     branch_and_cut alg(mx);
-    alg.solve();
+    auto [cost, path] = alg.solve();
+    std::cout << "path = {";
+    for(auto[v1, v2] : path) {
+        std::cout << "(" << v1 << "," << v2 << ")";
+    }
+    std::cout << "}" << std::endl;
+    std::cout << "cost = " << cost << std::endl;
     return 0;
 }
