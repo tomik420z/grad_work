@@ -1,6 +1,18 @@
 #include "gomory_solver.h"
- 
+#include "C:\univer\gradwork\mod2\mod2.h"
+
+
+
+
 class branch_and_cut {
+public:
+    /// @brief нахождение базисного решения для алгоритма гомори 
+    enum finding_a_basic_solution {
+        TSP_DEFAULT,
+        TSP_LITTLE_ALG,
+        TSP_MOD2_ALG
+    };
+
 protected:
     const matrix_dist& mx;
 
@@ -89,7 +101,9 @@ public:
     branch_and_cut() = delete;
 
     branch_and_cut(const matrix_dist& mx) : mx(mx) {}    
+    
 
+    template<finding_a_basic_solution type_alg>
     std::pair<size_t, std::vector<std::pair<size_t, size_t>>> solve() {
         std::pair<size_t, std::vector<std::pair<size_t, size_t>>> res;
         size_t N = mx.size();
@@ -98,9 +112,12 @@ public:
 
         size_t i = 0;
         gomory_solver simp_s(mx, x, lin_eq);
+        if constexpr (type_alg == TSP_MOD2_ALG) {
+            auto[cost_mod2, path_mod2] = mod2_alg(mx);
+            path_mod2.push_back(0);
+            simp_s.solve(path_mod2);    
+        } 
         
-        simp_s.solve();
-            
         const auto vec_coord = simp_s.get_path();
         
         size_t cost = simp_s.get_cost(mx, vec_coord);
@@ -174,7 +191,7 @@ public:
 int main(int argc, char* argv[]) {
     matrix_dist mx(argv[1]);
     branch_and_cut alg(mx);
-    auto [cost, path] = alg.solve();
+    auto [cost, path] = alg.solve<branch_and_cut::TSP_MOD2_ALG>();
     std::cout << "path = {";
     for(auto[v1, v2] : path) {
         std::cout << "(" << v1 << "," << v2 << ")";

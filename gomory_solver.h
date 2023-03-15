@@ -225,11 +225,8 @@ protected:
     void converting_a_table_to_canonical_form() {
         for(size_t i = table.find_max_b();  i < table.size(); i = table.find_max_b()) {
             size_t j = __find_max_abs_el(i);
-
             vec_name[i] = j;
             gauss_step<coeff_table_t>::step(table, table[i], i, j);
-            //__gauss_step(table[i], i, j);
-            //round_vec_free_members();
         }
     }
 
@@ -254,6 +251,32 @@ protected:
         } 
     }
 
+    size_t __find_line_c(size_t j, std::vector<bool>& vec_taken) {
+        for(size_t i = 0; i < table.size(); ++i) {   
+            if (!vec_taken[i] && table[i][j] != 0) {
+                vec_taken[i] = true;
+                return i;
+            }     
+        }
+        return N;
+    }   
+
+    void __fill_basis_coeff(const std::vector<size_t>& v) {
+        std::vector<bool> vec_taken(table.size(), false);
+        for(size_t i = 0; i < N; ++i) {
+            size_t j;
+            if (v[i] < v[i + 1]) {
+                j = table.__to_flat_index(v[i], v[i + 1]);
+            } else {
+                j = table.__to_flat_index(v[i + 1], v[i]);
+            }
+            size_t c = __find_line_c(j, vec_taken);
+
+            vec_name[c] = j;
+            gauss_step<restrictions>::step(table, table[c], c, j);
+        }
+        std::cout << std::endl;
+    }
 
 public:
     // initialization 
@@ -296,12 +319,16 @@ public:
         std::cout << '\n';
     }
     
-    void solve() {
-
+    void solve(const std::vector<size_t>& path) {
+        
         __fill_basis_coeff();
-
+        __fill_basis_coeff(path);
+        //std::cout << table << std::endl;
         // привести таблицу к каноническому виду(для решения симплекс методом)
         converting_a_table_to_canonical_form();
+        //std::cout << table << std::endl;
+        //print_vec_name();
+        //exit(10);
 
         __calc_delta();
         size_t count_deletes = 0;
@@ -318,7 +345,8 @@ public:
                     
             std::cout << "solution is not int\n";
             const size_t index_max_frac = find_max_fractional();
-
+            
+           // std::cout << table.get_members()[index_max_frac] << std::endl;
             std::vector<rational<int64_t>> integer_restriction; //ограничение для целочисленности
             integer_restriction.resize(table[0].size());
 
@@ -372,7 +400,7 @@ public:
                     
             std::cout << "solution is not int\n";
             const size_t index_max_frac = find_max_fractional();
-
+           //std::cout << table.get_members()[index_max_frac] << std::endl;
             std::vector<rational<int64_t>> integer_restriction; //ограничение для целочисленности
             integer_restriction.resize(table[0].size());
 

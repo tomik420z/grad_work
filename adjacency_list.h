@@ -7,6 +7,8 @@
 #include <queue>
 #include <unordered_set>
 #include "linear_equation.h"
+
+
 class adjacency_list
 {
 public:
@@ -29,7 +31,19 @@ private:
 public:
     adjacency_list(const edges_t& edges, size_t __count_vertex) : vec_adj(create_vec_adj(edges, __count_vertex)) {}
     
+    adjacency_list(size_t sz) : vec_adj(sz) {}
+
+    adjacency_list(const adjacency_list& lst) : vec_adj(lst.vec_adj) {}
+    
     ~adjacency_list() {}
+
+    adjacency_list&operator=(const adjacency_list& lst) {
+        if (this == &lst) {
+            return *this;
+        }
+        vec_adj = lst.vec_adj;
+        return *this;
+    }
 
     adj_list_t& operator[](size_t i) {
         return vec_adj[i];  
@@ -42,6 +56,15 @@ public:
     size_t size() const noexcept {
         return vec_adj.size();
     }
+
+    void add(size_t from, size_t to) {
+        vec_adj[from].push_back(to);
+        vec_adj[to].push_back(from);
+    }
+    
+    void erase(size_t from, size_t to) {
+        vec_adj[from].erase(std::find(std::begin(vec_adj[from]), std::end(vec_adj[from]), to));        
+    } 
     
     void print() const {
         size_t i = 0;
@@ -55,6 +78,8 @@ public:
             std::cout << "]" << std::endl;
         }
     }
+
+
 };
 
 decltype(auto) get_add_restrictions(const adjacency_list& adj_li) {

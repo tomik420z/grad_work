@@ -31,16 +31,7 @@ protected:
     size_t index_addtional_variables; // индекс, с которого начинаются дополнительные переменные 
     std::vector<type_eq> vec_ratio;
 
-    // получить плоский индекс 
-    size_t __to_flat_index(size_t i, size_t j) const noexcept {
-        if (i > 0) {
-            size_t a = __n - i + 1;
-            size_t b = __n;
-            return ((b - a + 1) * (b + a)) / 2 + j - (i + 1);
-        } else {
-            return j - (i + 1);
-        }
-    }
+    
 
     // посчитать количество дополнительных параметров 
     size_t __calc_count_free_var(const set_linear_eq& lin_sys) const {
@@ -54,6 +45,17 @@ protected:
     }
 
 public:    
+    // получить плоский индекс 
+    size_t __to_flat_index(size_t i, size_t j) const noexcept {
+        if (i > 0) {
+            size_t a = __n - i + 1;
+            size_t b = __n;
+            return ((b - a + 1) * (b + a)) / 2 + j - (i + 1);
+        } else {
+            return j - (i + 1);
+        }
+    }
+    
     /// @brief инициализация 
     /// @param lin_sys система линейных уравнений(и неравенств) 
     /// @param count_variables количество базовых переменных 
@@ -282,11 +284,12 @@ std::ostream& operator<<(std::ostream&os, const restrictions& restr) {
     auto it = restr.free_begin();
     for(const auto& line : restr) {
         for(const auto el : line) {
-            os.width(1);
+            os.width(2);
             os << el << " ";
         }
         os.width(1);
-        os << *it << std::endl;
+
+        os<<"|" << *it << std::endl;
         ++it;
     }
     return os;
